@@ -147,20 +147,52 @@
 
                     <!-- Pretrained Model Selection & Download -->
                     <div class="form-group">
-                        <label for="llmModelSelect">🤖 বেস মডেল নির্বাচন করুন (Base Pretrained LLM):</label>
+                        <label for="llmModelSelect">🤖 বেস মডেল নির্বাচন করুন (Base Pretrained LLM > 1GB & Dynamic GPU):</label>
                         <div style="display: flex; gap: 8px;">
-                            <select id="llmModelSelect" class="select-input" style="flex: 1; font-weight: 600;">
-                                <option value="gpt2" selected>⭐ GPT-2 Base (124M Params - Fast & Stable)</option>
-                                <option value="distilgpt2">⚡ DistilGPT-2 (82M Params - Ultra-Lightweight)</option>
-                                <option value="smollm">🧠 SmolLM-135M (135M - Modern LLaMA Arch)</option>
-                                <option value="nanogpt">🛠️ NanoGPT (Local Scratch - Zero Download)</option>
+                            <select id="llmModelSelect" class="select-input" style="flex: 1; font-weight: 600;" onchange="handleModelDropdownChange(this.value, 'llm')">
+                                <optgroup label="🌟 ১GB - ২GB মডেলসমূহ (GTX 1650 4GB GPU অপ্টিমাইজড)">
+                                    <option value="qwen-1.5b" selected>⭐ Qwen2.5-1.5B-Instruct (1.5 GB - SOTA Multilingual & Bengali)</option>
+                                    <option value="deepseek-1.5b">🧠 DeepSeek-R1-Distill-Qwen-1.5B (1.5 GB - Chain-of-Thought Reasoning)</option>
+                                    <option value="smollm2-1.7b">⚡ SmolLM2-1.7B-Instruct (1.7 GB - High-Efficiency Small LLM)</option>
+                                    <option value="llama-3.2-1b">🦙 Llama-3.2-1B-Instruct (1.2 GB - Meta Official)</option>
+                                    <option value="tinyllama">💬 TinyLlama-1.1B-Chat (1.1 GB - Proven Fast Assistant)</option>
+                                    <option value="gpt2-medium">🏛️ GPT-2 Medium (1.4 GB - 355M Intermediate)</option>
+                                </optgroup>
+                                <optgroup label="🚀 ২GB - ৪GB মডেলসমূহ (FP16 / Auto Layer-Offload)">
+                                    <option value="qwen-3b">💎 Qwen2.5-3B-Instruct (3.2 GB - High Intelligence Reasoning)</option>
+                                    <option value="gemma-2-2b">🔷 Gemma-2-2B-IT (2.4 GB - Google DeepMind)</option>
+                                    <option value="phi-3.5-mini">🔬 Phi-3.5-Mini-Instruct (3.8 GB - Microsoft Reasoning)</option>
+                                    <option value="llama-3.2-3b">🦙 Llama-3.2-3B-Instruct (3.2 GB - Meta 3B Architecture)</option>
+                                </optgroup>
+                                <optgroup label="⚡ আল্ট্রা-লাইটওয়েট মডেল (< ১GB VRAM)">
+                                    <option value="qwen-0.5b">⚡ Qwen2.5-0.5B-Instruct (0.9 GB - Ultra-Light Bengali & Math)</option>
+                                    <option value="smollm">🧠 SmolLM-135M (270 MB - Modern LLaMA Arch)</option>
+                                    <option value="distilgpt2">🚀 DistilGPT-2 (330 MB - 82M Lightweight)</option>
+                                    <option value="gpt2">⭐ GPT-2 Base (498 MB - 124M Standard)</option>
+                                    <option value="nanogpt">🛠️ NanoGPT (Local Scratch - Zero Download)</option>
+                                </optgroup>
+                                <optgroup label="🛠️ কাস্টম মডেল">
+                                    <option value="custom">✏️ কাস্টম Hugging Face রিপোজিটরি আইডি দিন...</option>
+                                </optgroup>
                             </select>
                             <button type="button" class="preset-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700; white-space: nowrap; padding: 0 12px;" onclick="loadSelectedLlmModel()">
                                 📥 মডেল লোড / ডাউনলোড
                             </button>
                         </div>
+
+                        <!-- Custom Model ID Input Field (Shown if 'custom' is selected) -->
+                        <div id="llmCustomModelBox" style="display: none; margin-top: 8px;">
+                            <input type="text" id="llmCustomModelInput" placeholder="যেকোনো Hugging Face মডেল আইডি দিন (যেমন: Qwen/Qwen2.5-1.5B-Instruct)..." class="select-input" style="font-family: var(--font-mono); font-size: 11px;">
+                        </div>
+
+                        <!-- Dynamic Live GPU VRAM Capacity & Recommendation Bar -->
+                        <div id="gpuVramLiveBar" style="margin-top: 6px; font-size: 11px; padding: 6px 10px; border-radius: 6px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); color: #38bdf8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                            <span>🎮 <strong>লাইভ GPU VRAM:</strong> <span id="gpuNameDisplay">NVIDIA GTX 1650</span> (<span id="gpuVramDisplay">4.0 GB | 3.2 GB Free</span>)</span>
+                            <span class="speedup-pill" id="gpuTierBadge" style="background: rgba(52, 211, 153, 0.2); color: #34d399;">Tier 2: Up to 2.5GB Fit</span>
+                        </div>
+
                         <div id="modelLoadStatusBadge" class="file-hint" style="color: var(--accent-cyan); font-weight: 600; margin-top: 5px;">
-                            ℹ️ মডেল সিলেক্ট করে 'মডেল লোড' বাটনে চাপ দিন (কিংবা সরাসরি ফাইন-টিউন শুরু করতে পারেন)।
+                            ℹ️ মডেল সিলেক্ট করে 'মডেল লোড' বাটনে চাপ দিন (GPU VRAM অনুযায়ী স্বয়ংক্রিয় অপ্টিমাইজ হবে)।
                         </div>
                         <div style="margin-top: 6px; font-size: 11px; padding: 5px 10px; border-radius: 4px; background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.25); color: #34d399; display: flex; align-items: center; justify-content: space-between;">
                             <span>💾 <strong>মডেল সেভ লোকেশন:</strong> <code style="color: #67e8f9;">F:\CUDA TEST\models\</code></span>
@@ -221,15 +253,38 @@ Deep learning and parallel tensor computation on NVIDIA CUDA GPUs enable rapid n
                     <div class="form-group">
                         <label>🤖 Hugging Face লাইট মডেল নির্বাচন (Lightweight AI Model):</label>
                         <div style="display: flex; gap: 8px;">
-                            <select id="bookHfModelSelect" class="select-input" style="flex: 1; font-weight: 600;">
-                                <option value="qwen" selected>⭐ Qwen2.5-0.5B-Instruct (~0.9GB - Multilingual & Bengali, Best Reasoning)</option>
-                                <option value="smollm">⚡ SmolLM2-135M-Instruct (~270MB - Ultra Fast & Lightweight)</option>
-                                <option value="tinyllama">💬 TinyLlama-1.1B-Chat (~2.2GB - Conversational Assistant)</option>
-                                <option value="distilgpt2">🚀 DistilGPT-2 (82M Params - Instant 0.3GB)</option>
+                            <select id="bookHfModelSelect" class="select-input" style="flex: 1; font-weight: 600;" onchange="handleModelDropdownChange(this.value, 'book')">
+                                <optgroup label="🌟 ১GB - ২GB মডেলসমূহ (GTX 1650 4GB GPU অপ্টিমাইজড)">
+                                    <option value="qwen-1.5b" selected>⭐ Qwen2.5-1.5B-Instruct (1.5 GB - SOTA Multilingual & Bengali)</option>
+                                    <option value="deepseek-1.5b">🧠 DeepSeek-R1-Distill-Qwen-1.5B (1.5 GB - Chain-of-Thought Reasoning)</option>
+                                    <option value="smollm2-1.7b">⚡ SmolLM2-1.7B-Instruct (1.7 GB - High-Efficiency Small LLM)</option>
+                                    <option value="llama-3.2-1b">🦙 Llama-3.2-1B-Instruct (1.2 GB - Meta Official)</option>
+                                    <option value="tinyllama">💬 TinyLlama-1.1B-Chat (1.1 GB - Proven Fast Assistant)</option>
+                                    <option value="gpt2-medium">🏛️ GPT-2 Medium (1.4 GB - 355M Intermediate)</option>
+                                </optgroup>
+                                <optgroup label="🚀 ২GB - ৪GB মডেলসমূহ (FP16 / Auto Layer-Offload)">
+                                    <option value="qwen-3b">💎 Qwen2.5-3B-Instruct (3.2 GB - High Intelligence Reasoning)</option>
+                                    <option value="gemma-2-2b">🔷 Gemma-2-2B-IT (2.4 GB - Google DeepMind)</option>
+                                    <option value="phi-3.5-mini">🔬 Phi-3.5-Mini-Instruct (3.8 GB - Microsoft Reasoning)</option>
+                                    <option value="llama-3.2-3b">🦙 Llama-3.2-3B-Instruct (3.2 GB - Meta 3B Architecture)</option>
+                                </optgroup>
+                                <optgroup label="⚡ আল্ট্রা-লাইটওয়েট মডেল (< ১GB VRAM)">
+                                    <option value="qwen-0.5b">⚡ Qwen2.5-0.5B-Instruct (0.9 GB - Ultra-Light Bengali & Math)</option>
+                                    <option value="smollm">🧠 SmolLM-135M (270 MB - Modern LLaMA Arch)</option>
+                                    <option value="distilgpt2">🚀 DistilGPT-2 (330 MB - 82M Lightweight)</option>
+                                    <option value="gpt2">⭐ GPT-2 Base (498 MB - 124M Standard)</option>
+                                </optgroup>
+                                <optgroup label="🛠️ কাস্টম মডেল">
+                                    <option value="custom">✏️ কাস্টম Hugging Face রিপোজিটরি আইডি দিন...</option>
+                                </optgroup>
                             </select>
                             <button type="button" class="preset-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700; white-space: nowrap; padding: 0 14px;" onclick="downloadAndLoadHfModel()">
                                 📥 মডেল নামান ও চালান
                             </button>
+                        </div>
+                        <!-- Custom Model ID Input Field for Book Tab -->
+                        <div id="bookCustomModelBox" style="display: none; margin-top: 8px;">
+                            <input type="text" id="bookCustomModelInput" placeholder="যেকোনো Hugging Face মডেল আইডি দিন (যেমন: Qwen/Qwen2.5-1.5B-Instruct)..." class="select-input" style="font-family: var(--font-mono); font-size: 11px;">
                         </div>
                         <div id="bookHfStatus" class="file-hint" style="color: var(--accent-cyan); font-weight: 600; margin-top: 5px;">
                             মডেল নির্বাচন করে বাটনে চাপ দিন (GTX 1650 4GB VRAM এর জন্য সম্পূর্ণ অপ্টিমাইজড)।

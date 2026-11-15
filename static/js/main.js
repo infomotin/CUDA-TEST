@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initGeometryCanvas();
     fetchSystemInfo();
     loadHistoryFromDB();
+    fetchDynamicModelsAndGpu();
 
     // Auto-poll GPU temperature & utilization every 2.5 seconds
     setInterval(fetchSystemInfo, 2500);
@@ -970,9 +971,18 @@ async function uploadBookFile(input) {
 
 async function downloadAndLoadHfModel() {
     const select = document.getElementById("bookHfModelSelect");
-    const modelChoice = select ? select.value : "qwen";
+    let modelChoice = select ? select.value : "qwen-1.5b";
+    if (modelChoice === "custom") {
+        const customInput = document.getElementById("bookCustomModelInput");
+        const customVal = customInput ? customInput.value.trim() : "";
+        if (!customVal) {
+            alert("অনুগ্রহ করে একটি Hugging Face মডেল আইডি লিখুন (যেমন: Qwen/Qwen2.5-1.5B-Instruct)");
+            return;
+        }
+        modelChoice = customVal;
+    }
     const statusEl = document.getElementById("bookHfStatus");
-    if (statusEl) statusEl.innerText = `⏳ Hugging Face থেকে মডেল নামানো ও CUDA তে লোড হচ্ছে: ${modelChoice.toUpperCase()}...`;
+    if (statusEl) statusEl.innerText = `⏳ Hugging Face থেকে মডেল নামানো ও CUDA তে লোড হচ্ছে: ${modelChoice}...`;
 
     try {
         const res = await fetch("/api/book/download_model", {
@@ -1218,15 +1228,92 @@ async function runTerrain3D() {
 }
 
 // =============================================================
-// LLM Studio: Pretrained Model Loading, LoRA Fine-Tuning & Ingestion
+// LLM Studio: Dynamic GPU Tiering, Pretrained Loading, LoRA & Ingestion
 // =============================================================
 let activePdfFilename = null;
 
+// Dynamic GPU VRAM Hardware Inspector & Catalogue Synchronizer
+async function fetchDynamicModelsAndGpu() {
+    try {
+        const res = await fetch("/api/llm/dynamic_models");
+        const data = await res.json();
+        if (data.status !== "success" || !data.gpu_info) return;
+
+        const gpu = data.gpu_info;
+        const nameEl = document.getElementById("gpuNameDisplay");
+        if (nameEl) nameEl.innerText = gpu.gpu_name || gpu.name || "NVIDIA GPU";
+
+        const vramEl = document.getElementById("gpuVramDisplay");
+        if (vramEl) {
+            vramEl.innerText = `${gpu.total_vram_gb} GB | ${gpu.free_vram_gb} GB Free`;
+        }
+
+        const tierBadge = document.getElementById("gpuTierBadge");
+        if (tierBadge) {
+            tierBadge.innerText = gpu.tier;
+            tierBadge.title = gpu.tier_desc;
+            if (gpu.tier.includes("Tier 4") || gpu.tier.includes("Tier 3")) {
+                tierBadge.style.background = "rgba(59, 130, 246, 0.25)";
+                tierBadge.style.color = "#60a5fa";
+            } else if (gpu.tier.includes("Tier 2")) {
+                tierBadge.style.background = "rgba(52, 211, 153, 0.2)";
+                tierBadge.style.color = "#34d399";
+            } else {
+                tierBadge.style.background = "rgba(251, 191, 36, 0.2)";
+                tierBadge.style.color = "#fbbf24";
+            }
+        }
+
+        // Dynamically decorate model dropdowns with real-time GPU fit badges
+        if (data.models && Array.isArray(data.models)) {
+            const modelMap = {};
+            data.models.forEach(m => { modelMap[m.key] = m; });
+
+            ['llmModelSelect', 'bookHfModelSelect'].forEach(selectId => {
+                const selectEl = document.getElementById(selectId);
+                if (!selectEl) return;
+                Array.from(selectEl.options).forEach(opt => {
+                    const m = modelMap[opt.value];
+                    if (m) {
+                        let baseName = opt.getAttribute("data-base-name");
+                        if (!baseName) {
+                            baseName = opt.text.replace(/\s*\[.*\]\s*$/, "").trim();
+                            opt.setAttribute("data-base-name", baseName);
+                        }
+                        opt.text = `${baseName} [${m.fit_badge}]`;
+                    }
+                });
+            });
+        }
+    } catch (err) {
+        console.warn("fetchDynamicModelsAndGpu error:", err);
+    }
+}
+
+function handleModelDropdownChange(val, context) {
+    if (context === "llm") {
+        const box = document.getElementById("llmCustomModelBox");
+        if (box) box.style.display = (val === "custom") ? "block" : "none";
+    } else if (context === "book") {
+        const box = document.getElementById("bookCustomModelBox");
+        if (box) box.style.display = (val === "custom") ? "block" : "none";
+    }
+}
+
 async function loadSelectedLlmModel() {
     const select = document.getElementById("llmModelSelect");
-    const modelName = select ? select.value : "gpt2";
+    let modelName = select ? select.value : "qwen-1.5b";
+    if (modelName === "custom") {
+        const customInput = document.getElementById("llmCustomModelInput");
+        const customVal = customInput ? customInput.value.trim() : "";
+        if (!customVal) {
+            alert("অনুগ্রহ করে একটি Hugging Face মডেল আইডি লিখুন (যেমন: Qwen/Qwen2.5-1.5B-Instruct বা deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B)");
+            return;
+        }
+        modelName = customVal;
+    }
     const badge = document.getElementById("modelLoadStatusBadge");
-    if (badge) badge.innerText = `⏳ মডেল ডাউনলোড ও লোড হচ্ছে: ${modelName} (CUDA তে স্থানান্তর চলছে)...`;
+    if (badge) badge.innerText = `⏳ মডেল ডাউনলোড ও লোড হচ্ছে: ${modelName} (GPU VRAM ডাইনামিক অ্যাডাপ্টেশনে স্থানান্তর চলছে)...`;
 
     try {
         const res = await fetch("/api/llm/load_model", {
@@ -1299,7 +1386,12 @@ async function runLlmTraining() {
     const lrEl = document.getElementById("llmLr");
     const lr = lrEl ? parseFloat(lrEl.value) : 0.0003;
     const select = document.getElementById("llmModelSelect");
-    const modelChoice = select ? select.value : "gpt2";
+    let modelChoice = select ? select.value : "gpt2";
+    if (modelChoice === "custom") {
+        const customInput = document.getElementById("llmCustomModelInput");
+        const customVal = customInput ? customInput.value.trim() : "";
+        if (customVal) modelChoice = customVal;
+    }
     const docSource = activePdfFilename ? `File: ${activePdfFilename}` : "Custom Text";
 
     const badge = document.getElementById("modelLoadStatusBadge");

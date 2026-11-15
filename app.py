@@ -1647,6 +1647,262 @@ DEFAULT_TRAIN_TEXT = """
 Deep learning and parallel tensor computation on NVIDIA CUDA GPUs enable rapid neural training and generative language modeling.
 """
 
+# -------------------------------------------------------------
+# DYNAMIC GPU & PRETRAINED LLM MODEL CATALOGUE
+# -------------------------------------------------------------
+MODEL_CATALOGUE = {
+    # 🌟 1GB - 2GB Models (Optimized for 4GB GPUs like GTX 1650)
+    "qwen-1.5b": {
+        "id": "Qwen/Qwen2.5-1.5B-Instruct",
+        "name": "Qwen2.5-1.5B-Instruct",
+        "size_label": "1.5 GB",
+        "params": "1.54B",
+        "vram_req_gb": 1.6,
+        "group": "1gb_to_2gb",
+        "desc": "SOTA 1.5B Multilingual, Bengali & Math Reasoning"
+    },
+    "deepseek-1.5b": {
+        "id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B",
+        "size_label": "1.5 GB",
+        "params": "1.5B",
+        "vram_req_gb": 1.6,
+        "group": "1gb_to_2gb",
+        "desc": "DeepSeek-R1 Distilled Chain of Thought Reasoning"
+    },
+    "smollm2-1.7b": {
+        "id": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        "name": "SmolLM2-1.7B-Instruct",
+        "size_label": "1.7 GB",
+        "params": "1.71B",
+        "vram_req_gb": 1.8,
+        "group": "1gb_to_2gb",
+        "desc": "Hugging Face Top-Tier Small Language Model"
+    },
+    "llama-3.2-1b": {
+        "id": "meta-llama/Llama-3.2-1B-Instruct",
+        "name": "Llama-3.2-1B-Instruct",
+        "size_label": "1.2 GB",
+        "params": "1.23B",
+        "vram_req_gb": 1.3,
+        "group": "1gb_to_2gb",
+        "desc": "Meta Official Llama 3.2 1B Instruct"
+    },
+    "tinyllama": {
+        "id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "name": "TinyLlama-1.1B-Chat",
+        "size_label": "1.1 GB",
+        "params": "1.1B",
+        "vram_req_gb": 1.2,
+        "group": "1gb_to_2gb",
+        "desc": "Proven Ultra-Fast 1.1B Conversational Assistant"
+    },
+    "gpt2-medium": {
+        "id": "gpt2-medium",
+        "name": "GPT-2 Medium",
+        "size_label": "1.4 GB",
+        "params": "355M",
+        "vram_req_gb": 1.3,
+        "group": "1gb_to_2gb",
+        "desc": "OpenAI Classic 355M Intermediate Architecture"
+    },
+
+    # 🚀 2GB - 4GB Models (FP16 / Auto Layer-Offload)
+    "qwen-3b": {
+        "id": "Qwen/Qwen2.5-3B-Instruct",
+        "name": "Qwen2.5-3B-Instruct",
+        "size_label": "3.2 GB",
+        "params": "3.09B",
+        "vram_req_gb": 3.2,
+        "group": "2gb_to_4gb",
+        "desc": "High Intelligence 3B Model with Auto Layer Offload"
+    },
+    "gemma-2-2b": {
+        "id": "google/gemma-2-2b-it",
+        "name": "Gemma-2-2B-IT",
+        "size_label": "2.4 GB",
+        "params": "2.6B",
+        "vram_req_gb": 2.5,
+        "group": "2gb_to_4gb",
+        "desc": "Google DeepMind Gemma 2 Architecture"
+    },
+    "phi-3.5-mini": {
+        "id": "microsoft/Phi-3.5-mini-instruct",
+        "name": "Phi-3.5-Mini-Instruct",
+        "size_label": "3.8 GB",
+        "params": "3.8B",
+        "vram_req_gb": 3.8,
+        "group": "2gb_to_4gb",
+        "desc": "Microsoft 3.8B Mini High Reasoning Powerhouse"
+    },
+    "llama-3.2-3b": {
+        "id": "meta-llama/Llama-3.2-3B-Instruct",
+        "name": "Llama-3.2-3B-Instruct",
+        "size_label": "3.2 GB",
+        "params": "3.21B",
+        "vram_req_gb": 3.3,
+        "group": "2gb_to_4gb",
+        "desc": "Meta Official Llama 3.2 3B Instruct"
+    },
+
+    # ⚡ Models < 1GB (Ultra-Lightweight & Fast)
+    "qwen-0.5b": {
+        "id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "name": "Qwen2.5-0.5B-Instruct",
+        "size_label": "0.9 GB",
+        "params": "490M",
+        "vram_req_gb": 0.9,
+        "group": "sub_1gb",
+        "desc": "Fast Bengali, English & Code Reasoning"
+    },
+    "smollm-135m": {
+        "id": "HuggingFaceTB/SmolLM-135M",
+        "name": "SmolLM-135M",
+        "size_label": "270 MB",
+        "params": "135M",
+        "vram_req_gb": 0.3,
+        "group": "sub_1gb",
+        "desc": "Modern Compact LLaMA Architecture"
+    },
+    "distilgpt2": {
+        "id": "distilgpt2",
+        "name": "DistilGPT-2",
+        "size_label": "330 MB",
+        "params": "82M",
+        "vram_req_gb": 0.35,
+        "group": "sub_1gb",
+        "desc": "Distilled Fast GPT Model"
+    },
+    "gpt2": {
+        "id": "gpt2",
+        "name": "GPT-2 Base",
+        "size_label": "498 MB",
+        "params": "124M",
+        "vram_req_gb": 0.5,
+        "group": "sub_1gb",
+        "desc": "Standard 124M Generative Model"
+    },
+    "nanogpt": {
+        "id": "nanogpt",
+        "name": "NanoGPT (Local Scratch)",
+        "size_label": "0 MB (Local)",
+        "params": "1.2M",
+        "vram_req_gb": 0.05,
+        "group": "sub_1gb",
+        "desc": "Pure In-Memory Local Transformer"
+    }
+}
+
+def resolve_hf_model_id(model_key_or_id):
+    """Resolve shorthand key or return custom Hugging Face model repository ID"""
+    cleaned = str(model_key_or_id).strip()
+    if cleaned.lower() in MODEL_CATALOGUE:
+        return MODEL_CATALOGUE[cleaned.lower()]["id"]
+    # Check partial matches
+    for k, v in MODEL_CATALOGUE.items():
+        if k == cleaned.lower() or v["id"].lower() == cleaned.lower() or v["name"].lower() == cleaned.lower():
+            return v["id"]
+    return cleaned
+
+def get_dynamic_gpu_info():
+    """Detect GPU hardware and live memory capacity for dynamic model tiering"""
+    info = {
+        "has_cuda": False,
+        "name": "CPU System Memory",
+        "gpu_name": "CPU System Memory",
+        "total_vram_gb": 0.0,
+        "free_vram_gb": 0.0,
+        "used_vram_gb": 0.0,
+        "tier": "CPU",
+        "tier_desc": "Basic CPU Mode (Lightweight Models <500MB Recommended)"
+    }
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            props = torch.cuda.get_device_properties(0)
+            free_b, total_b = torch.cuda.mem_get_info()
+            total_gb = round(total_b / (1024**3), 2)
+            free_gb = round(free_b / (1024**3), 2)
+            used_gb = round((total_b - free_b) / (1024**3), 2)
+
+            if total_gb >= 16.0:
+                tier = "Tier 4 (16GB+ Extreme)"
+                tier_desc = "High-End GPU: Can run up to 14B/30B Models natively"
+            elif total_gb >= 8.0:
+                tier = "Tier 3 (8GB-12GB High)"
+                tier_desc = "Mid-to-High GPU: Can run 3B-7B Models with native speed"
+            elif total_gb >= 4.0:
+                tier = "Tier 2 (4GB-6GB Entry GPU)"
+                tier_desc = f"GTX 1650 Class: 1GB-2GB Models Recommended with Auto Layer Offload"
+            else:
+                tier = "Tier 1 (<4GB VRAM)"
+                tier_desc = "Lightweight Models (0.5B-1.1B) Recommended"
+
+            info.update({
+                "has_cuda": True,
+                "name": props.name,
+                "gpu_name": props.name,
+                "total_vram_gb": total_gb,
+                "free_vram_gb": free_gb,
+                "used_vram_gb": used_gb,
+                "tier": tier,
+                "tier_desc": tier_desc
+            })
+        except Exception:
+            pass
+    return info
+
+def load_hf_model_dynamically(hf_model_id, device):
+    """Load model adapting to GPU VRAM using Accelerate device_map and float16 precision"""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    start_t = time.perf_counter()
+
+    tokenizer = AutoTokenizer.from_pretrained(hf_model_id, cache_dir=HF_MODELS_CACHE)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+    # Check if we can leverage accelerate's auto device mapping
+    gpu_info = get_dynamic_gpu_info()
+    can_auto_map = gpu_info["has_cuda"] and gpu_info["free_vram_gb"] >= 0.8
+
+    if can_auto_map:
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                hf_model_id,
+                cache_dir=HF_MODELS_CACHE,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+                device_map="auto"
+            )
+        except Exception:
+            model = AutoModelForCausalLM.from_pretrained(
+                hf_model_id,
+                cache_dir=HF_MODELS_CACHE,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True
+            ).to(device)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            hf_model_id,
+            cache_dir=HF_MODELS_CACHE,
+            torch_dtype=dtype,
+            low_cpu_mem_usage=True
+        ).to(device)
+
+    model.eval()
+    load_time = round(time.perf_counter() - start_t, 2)
+    vram_mb = 0
+    if torch.cuda.is_available():
+        try:
+            vram_mb = round(torch.cuda.memory_allocated(0) / (1024**2), 1)
+        except Exception:
+            vram_mb = 0
+    total_params = sum(p.numel() for p in model.parameters())
+
+    return tokenizer, model, total_params, load_time, vram_mb
+
 # Global active LLM system (supports HuggingFace Pretrained, LoRA fine-tuning, and NanoGPT)
 ACTIVE_LLM_SYSTEM = {
     "type": "none",
@@ -1659,12 +1915,55 @@ ACTIVE_LLM_SYSTEM = {
     "doc_source": "Default Corpus"
 }
 
+@app.route("/api/llm/dynamic_models", methods=["GET"])
+def llm_dynamic_models():
+    """Live GPU VRAM detection and dynamic model catalogue for dropdown population"""
+    gpu_info = get_dynamic_gpu_info()
+    free_gb = gpu_info.get("free_vram_gb", 0.0)
+    total_gb = gpu_info.get("total_vram_gb", 0.0)
+
+    annotated = []
+    for key, item in MODEL_CATALOGUE.items():
+        req = item["vram_req_gb"]
+        if req <= free_gb:
+            fit_status = "fit"
+            fit_badge = "🟢 Native CUDA Fit"
+            recommended = True
+        elif req <= total_gb + 2.5:
+            fit_status = "offload"
+            fit_badge = "🟡 Auto Layer Offload"
+            recommended = (free_gb >= 1.0)
+        else:
+            fit_status = "heavy"
+            fit_badge = "🟠 Needs Higher VRAM GPU"
+            recommended = False
+
+        annotated.append({
+            "key": key,
+            "id": item["id"],
+            "name": item["name"],
+            "size_label": item["size_label"],
+            "params": item["params"],
+            "vram_req_gb": item["vram_req_gb"],
+            "group": item["group"],
+            "desc": item["desc"],
+            "fit_status": fit_status,
+            "fit_badge": fit_badge,
+            "recommended": recommended
+        })
+
+    return jsonify({
+        "status": "success",
+        "gpu_info": gpu_info,
+        "models": annotated
+    })
+
 @app.route("/api/llm/load_model", methods=["POST"])
 def llm_load_model():
-    """Download and load a pre-trained open source LLM (GPT-2, SmolLM, DistilGPT-2, NanoGPT)"""
+    """Download and load any pre-trained open source LLM from catalogue or custom ID"""
     global ACTIVE_LLM_SYSTEM
     data = request.get_json() or {}
-    model_name = data.get("model_name", "gpt2").strip()
+    model_name = data.get("model_name", "qwen-1.5b").strip()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
@@ -1690,39 +1989,8 @@ def llm_load_model():
         })
 
     try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-
-        model_id_map = {
-            "gpt2": "gpt2",
-            "distilgpt2": "distilgpt2",
-            "smollm": "HuggingFaceTB/SmolLM-135M",
-            "smollm-135m": "HuggingFaceTB/SmolLM-135M",
-            "qwen": "Qwen/Qwen2.5-0.5B"
-        }
-        hf_model_id = model_id_map.get(model_name.lower(), model_name)
-
-        start_t = time.perf_counter()
-        tokenizer = AutoTokenizer.from_pretrained(hf_model_id, cache_dir=HF_MODELS_CACHE)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-
-        # Load fp16 on CUDA to save memory (takes under 400MB on GTX 1650 4GB)
-        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        model = AutoModelForCausalLM.from_pretrained(
-            hf_model_id,
-            cache_dir=HF_MODELS_CACHE,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True
-        )
-        model.to(device)
-        model.eval()
-
-        total_params = sum(p.numel() for p in model.parameters())
-        load_time = round(time.perf_counter() - start_t, 2)
-
-        vram_mb = 0
-        if torch.cuda.is_available():
-            vram_mb = round(torch.cuda.memory_allocated(0) / (1024**2), 1)
+        hf_model_id = resolve_hf_model_id(model_name)
+        tokenizer, model, total_params, load_time, vram_mb = load_hf_model_dynamically(hf_model_id, device)
 
         ACTIVE_LLM_SYSTEM["type"] = "hf_pretrained"
         ACTIVE_LLM_SYSTEM["model_name"] = hf_model_id
@@ -1742,7 +2010,7 @@ def llm_load_model():
             "params": f"{total_params:,}",
             "vram_mb": vram_mb,
             "load_time_sec": load_time,
-            "message": f"Successfully downloaded and loaded {hf_model_id} on {device} ({load_time}s)!"
+            "message": f"Successfully loaded {hf_model_id} into {MODELS_DIR} on {device} ({load_time}s)!"
         })
     except Exception as e:
         return jsonify({"error": f"Failed to download/load model '{model_name}': {str(e)}"}), 500
@@ -1776,13 +2044,8 @@ def llm_train():
         try:
             # Ensure model is loaded
             if ACTIVE_LLM_SYSTEM.get("type") != "hf_pretrained" or ACTIVE_LLM_SYSTEM.get("model") is None:
-                from transformers import AutoModelForCausalLM, AutoTokenizer
-                hf_id = "gpt2" if "gpt2" in model_choice else ("HuggingFaceTB/SmolLM-135M" if "smol" in model_choice else "distilgpt2")
-                tokenizer = AutoTokenizer.from_pretrained(hf_id, cache_dir=HF_MODELS_CACHE)
-                if tokenizer.pad_token is None:
-                    tokenizer.pad_token = tokenizer.eos_token
-                dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-                base_model = AutoModelForCausalLM.from_pretrained(hf_id, cache_dir=HF_MODELS_CACHE, torch_dtype=dtype, low_cpu_mem_usage=True).to(device)
+                hf_id = resolve_hf_model_id(model_choice)
+                tokenizer, base_model, total_params, load_time, vram_mb = load_hf_model_dynamically(hf_id, device)
                 ACTIVE_LLM_SYSTEM["type"] = "hf_pretrained"
                 ACTIVE_LLM_SYSTEM["model_name"] = hf_id
                 ACTIVE_LLM_SYSTEM["tokenizer"] = tokenizer
@@ -2822,19 +3085,14 @@ def book_upload():
 
 @app.route("/api/book/download_model", methods=["POST"])
 def book_download_model():
-    """Download and run a lightweight, high-performance Hugging Face model for book intelligence"""
+    """Download and run any high-performance Hugging Face model for book intelligence"""
     global BOOK_HF_MODEL
     data = request.get_json() or {}
-    model_choice = data.get("model", "qwen").lower()
+    model_choice = data.get("model", "qwen-1.5b").strip()
 
-    model_map = {
-        "qwen": ("Qwen2.5-0.5B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"),
-        "smollm": ("SmolLM2-135M-Instruct", "HuggingFaceTB/SmolLM2-135M-Instruct"),
-        "tinyllama": ("TinyLlama-1.1B-Chat", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
-        "distilgpt2": ("DistilGPT-2", "distilgpt2")
-    }
+    hf_id = resolve_hf_model_id(model_choice)
+    friendly_name = hf_id.split("/")[-1]
 
-    friendly_name, hf_id = model_map.get(model_choice, ("Qwen2.5-0.5B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         try:
@@ -2845,30 +3103,7 @@ def book_download_model():
             device = torch.device("cpu")
 
     try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-        start_t = time.perf_counter()
-
-        tokenizer = AutoTokenizer.from_pretrained(hf_id, cache_dir=HF_MODELS_CACHE)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-
-        # Load in float16 for minimal VRAM on GTX 1650
-        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        model = AutoModelForCausalLM.from_pretrained(
-            hf_id,
-            cache_dir=HF_MODELS_CACHE,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True
-        )
-        model.to(device)
-        model.eval()
-
-        vram_mb = 0
-        if torch.cuda.is_available():
-            vram_mb = round(torch.cuda.memory_allocated(0) / (1024**2), 1)
-
-        total_params = sum(p.numel() for p in model.parameters())
-        load_time = round(time.perf_counter() - start_t, 2)
+        tokenizer, model, total_params, load_time, vram_mb = load_hf_model_dynamically(hf_id, device)
 
         BOOK_HF_MODEL["name"] = friendly_name
         BOOK_HF_MODEL["model_id"] = hf_id
@@ -2884,7 +3119,7 @@ def book_download_model():
             "device": str(device).upper(),
             "vram_mb": vram_mb,
             "load_time_sec": load_time,
-            "message": f"{friendly_name} মডেল সফলভাবে CUDA মেমোরিতে লোড হয়েছে ({load_time}s)!"
+            "message": f"{friendly_name} মডেল সফলভাবে অ্যাপের মেমোরিতে লোড হয়েছে ({load_time}s)!"
         })
     except Exception as e:
         return jsonify({"error": f"Failed to download/load Hugging Face model {hf_id}: {str(e)}"}), 500
