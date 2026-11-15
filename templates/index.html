@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUDA Multimodal GPGPU & 3D Synthesis Studio</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Chart.js & Three.js 3D WebGL Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Header & Status -->
+        <header class="header">
+            <div class="logo-section">
+                <div class="logo-icon">⚡</div>
+                <div>
+                    <h1>CUDA GPGPU 3D Synthesis & Performance Lab</h1>
+                    <p class="subtitle">Real-time Telemetry (GPU Temp), 3D Mesh Synthesis, Geometry Morph & Multimodal DSP</p>
+                </div>
+            </div>
+            <div class="system-status-container">
+                <div class="status-badge loading" id="cudaStatusBadge">Checking Hardware...</div>
+                <button class="btn-refresh" onclick="fetchSystemInfo()" title="Refresh System Info">↻</button>
+            </div>
+        </header>
+
+        <!-- Live Telemetry & Hardware Specs Ribbon -->
+        <section class="hardware-ribbon" id="hardwareRibbon">
+            <div class="spec-card">
+                <span class="spec-label">GPU Model</span>
+                <span class="spec-val" id="specGpuName">-</span>
+            </div>
+            <div class="spec-card live-card">
+                <span class="spec-label">🌡️ GPU Temperature</span>
+                <span class="spec-val highlight-temp" id="specGpuTemp">-- °C</span>
+            </div>
+            <div class="spec-card live-card">
+                <span class="spec-label">⚡ GPU Load & Clock</span>
+                <span class="spec-val" id="specGpuUtil">-- %</span>
+            </div>
+            <div class="spec-card">
+                <span class="spec-label">Total VRAM</span>
+                <span class="spec-val" id="specTotalVram">-</span>
+            </div>
+            <div class="spec-card">
+                <span class="spec-label">PyTorch Build</span>
+                <span class="spec-val" id="specTorch">-</span>
+            </div>
+        </section>
+
+        <!-- Main Workspace -->
+        <main class="main-layout">
+            <!-- Left Panel: Problem Configuration -->
+            <section class="panel config-panel">
+                <h2 class="panel-title">1. ইনপুট ও সমস্যা নির্বাচন (Select Benchmark Mode)</h2>
+
+                <!-- Tabs Navigation -->
+                <div class="tab-buttons">
+                    <button class="tab-btn active" onclick="selectTab('vision')">🎯 অবজেক্ট ডিটেকশন ও রানিং ভিডিও<br><small>Object Detection & Video Analyzer</small></button>
+                    <button class="tab-btn" onclick="selectTab('directmath')">📐 ডিরেক্ট গণিত সমীকরণ ফর্ম<br><small>Formula & CUDA Calc</small></button>
+                    <button class="tab-btn" onclick="selectTab('bookreader')">📖 এআই বই রিডার ও চ্যাট<br><small>HuggingFace Model & Book Q&A</small></button>
+                    <button class="tab-btn" onclick="selectTab('llm')">🧠 LLM মডেল ট্রেইনিং স্টুডিও<br><small>LoRA Fine-Tune & Train</small></button>
+                    <button class="tab-btn" onclick="selectTab('terrain3d')">🏔️ 3D ম্যাপ ও অবজেক্ট<br><small>3D Map & .OBJ Export</small></button>
+                    <button class="tab-btn" onclick="selectTab('jpgmatrix')">🧮 JPG ম্যাট্রিক্স গুণন ল্যাব<br><small>Pixel Numbers & Transform</small></button>
+                    <button class="tab-btn" onclick="selectTab('geometry')">📐 ক্ষেত্রফল অপরিবর্তিত রূপান্তর<br><small>Equi-areal Geometry</small></button>
+                    <button class="tab-btn" onclick="selectTab('image')">🖼️ ইমেজ ফিল্টারিং (১৬+)<br><small>Visual Image Filters</small></button>
+                    <button class="tab-btn" onclick="selectTab('audio')">🎵 অডিও সিগন্যাল (cuFFT)<br><small>Spectrogram Heatmap</small></button>
+                    <button class="tab-btn" onclick="selectTab('matrix')">🔢 ম্যাট্রিক্স বেঞ্চমার্ক<br><small>GFLOPS Speed Test</small></button>
+                    <button class="tab-btn" onclick="selectTab('mandelbrot')">🌀 ফ্র্যাক্টাল রেন্ডার<br><small>Mandelbrot Math</small></button>
+                </div>
+
+                <!-- Tab: Vision, Object Detection & Video Analysis -->
+                <div class="tab-content active" id="tab-vision">
+                    <p class="tab-desc"><strong>কম্পিউটার ভিশন অবজেক্ট ডিটেকশন, কাউন্টিং ও রানিং ভিডিও অ্যানালাইসিস:</strong> স্থির ছবি বা আপলোড করা চলন্ত ভিডিওতে স্বয়ংক্রিয়ভাবে অবজেক্ট সনাক্ত করুন, সংখ্যা গণনা (Object Counting) করুন এবং লাইভ বাউন্ডিং বক্স ট্র্যাকিং দেখুন।</p>
+
+                    <div class="form-group">
+                        <label>অ্যানালাইসিস মোড নির্বাচন করুন (Mode)</label>
+                        <div class="matrix-preset-buttons">
+                            <button type="button" class="preset-btn active" id="btnModeImg" onclick="switchVisionMode('image')">🖼️ স্থির ছবিতে অবজেক্ট ডিটেকশন</button>
+                            <button type="button" class="preset-btn" id="btnModeVid" onclick="switchVisionMode('video')">🎬 রানিং ভিডিও অ্যানালাইসিস</button>
+                        </div>
+                    </div>
+
+                    <!-- Image Detection Input -->
+                    <div id="visionImageInputBox">
+                        <div class="form-group">
+                            <label>ছবি ইনপুট দিন (Upload Image for Detection)</label>
+                            <input type="file" id="visionImageFile" accept="image/*" class="file-input" onchange="runObjectDetection()">
+                            <div class="file-hint">ছবি না দিলে স্বয়ংক্রিয় জ্যামিতিক অবজেক্ট দৃশ্য ব্যবহৃত হবে।</div>
+                        </div>
+                    </div>
+
+                    <!-- Video Analysis Input -->
+                    <div id="visionVideoInputBox" style="display: none;">
+                        <div class="form-group">
+                            <label>চলন্ত ভিডিও ফাইল আপলোড করুন (Upload .mp4 / .webm Video)</label>
+                            <input type="file" id="visionVideoFile" accept="video/mp4,video/webm" class="file-input" onchange="loadUploadedVideo(this)">
+                            <div class="file-hint">ভিডিও সিলেক্ট করলে সাথে সাথে প্লেয়ারে লাইভ মোশন অবজেক্ট ট্র্যাকিং ও ফ্রেম কাউন্টিং শুরু হবে।</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Direct Math Formula Input -->
+                <div class="tab-content" id="tab-directmath">
+                    <p class="tab-desc"><strong>যেকোনো গাণিতিক সমীকরণ $f(x)$ সরাসরি ইনপুট দিন:</strong> আপনার GTX 1650 GPU কোটি কোটি পয়েন্টে সমান্তরালভাবে হিসাব করবে, ইন্টিগ্রাল $\int f(x)dx$ বের করবে এবং রিয়েল-টাইম গ্রাফ প্লট করবে।</p>
+                    
+                    <div class="form-group">
+                        <label for="directMathExpr">গাণিতিক সমীকরণ লিখুন (Type Formula $f(x)$):</label>
+                        <input type="text" id="directMathExpr" class="select-input" style="font-family: var(--font-mono); font-size: 14px; color: #34d399; font-weight: 700;" value="sin(x) / (abs(x) + 0.1) + exp(-x**2/10)">
+                        <div class="file-hint">সাপোর্টেড ফাংশন: sin, cos, tan, exp, log, sqrt, abs, sinh, cosh, tanh, pi, e, pow ইত্যাদি।</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>প্রিসেট গাণিতিক সমীকরণসমূহ (Quick Formula Presets):</label>
+                        <div class="matrix-preset-buttons">
+                            <button type="button" class="preset-btn" onclick="setMathPreset('sin(x) / (abs(x) + 0.1)')">🌊 Sinc Wave Filter</button>
+                            <button type="button" class="preset-btn" onclick="setMathPreset('exp(-x**2 / 2) / sqrt(2 * pi)')">🔔 Gaussian Distribution</button>
+                            <button type="button" class="preset-btn" onclick="setMathPreset('x**3 - 4*x**2 + x + 6')">📈 Cubic Polynomial</button>
+                            <button type="button" class="preset-btn" onclick="setMathPreset('sqrt(abs(x)) * sin(x**2)')">⚡ Non-linear Wave</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>ইনপুট রেঞ্জ ও উপাত্ত সংখ্যা (Range & Points)</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                            <div>
+                                <small style="color: var(--text-muted); font-size: 10px;">$x_{min}$</small>
+                                <input type="number" id="mathXMin" value="-10" class="select-input" style="padding: 6px;">
+                            </div>
+                            <div>
+                                <small style="color: var(--text-muted); font-size: 10px;">$x_{max}$</small>
+                                <input type="number" id="mathXMax" value="10" class="select-input" style="padding: 6px;">
+                            </div>
+                        </div>
+                        <label for="mathPoints">হিসাবযোগ্য পয়েন্ট সংখ্যা (Points: <span id="mathPointsLabel">3,000,000</span>)</label>
+                        <input type="range" id="mathPoints" min="500000" max="10000000" step="500000" value="3000000" oninput="document.getElementById('mathPointsLabel').innerText = Number(this.value).toLocaleString()">
+                    </div>
+                </div>
+
+                <!-- Tab: LLM Training & LoRA Fine-Tuning Studio -->
+                <div class="tab-content" id="tab-llm">
+                    <p class="tab-desc"><strong>প্রিট্লেইন্ড LLM ডাউনলোড, LoRA ফাইন-টিউনিং ও ডেটা ফিড:</strong> ওপেন-সোর্স প্রি-ট্রেইন্ড মডেল (যেমন GPT-2, SmolLM) সরাসরি ডাউনলোড করুন, অথবা PDF/TXT/JSON ফাইল থেকে ডেটা এক্সট্র্যাক্ট করে <strong>PEFT LoRA (Low-Rank Adaptation)</strong> দিয়ে আপনার GTX 1650 (4GB VRAM)-এ মেমোরি-দক্ষভাবে ফাইন-টিউন করুন।</p>
+
+                    <!-- Pretrained Model Selection & Download -->
+                    <div class="form-group">
+                        <label for="llmModelSelect">🤖 বেস মডেল নির্বাচন করুন (Base Pretrained LLM):</label>
+                        <div style="display: flex; gap: 8px;">
+                            <select id="llmModelSelect" class="select-input" style="flex: 1; font-weight: 600;">
+                                <option value="gpt2" selected>⭐ GPT-2 Base (124M Params - Fast & Stable)</option>
+                                <option value="distilgpt2">⚡ DistilGPT-2 (82M Params - Ultra-Lightweight)</option>
+                                <option value="smollm">🧠 SmolLM-135M (135M - Modern LLaMA Arch)</option>
+                                <option value="nanogpt">🛠️ NanoGPT (Local Scratch - Zero Download)</option>
+                            </select>
+                            <button type="button" class="preset-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700; white-space: nowrap; padding: 0 12px;" onclick="loadSelectedLlmModel()">
+                                📥 মডেল লোড / ডাউনলোড
+                            </button>
+                        </div>
+                        <div id="modelLoadStatusBadge" class="file-hint" style="color: var(--accent-cyan); font-weight: 600; margin-top: 5px;">
+                            ℹ️ মডেল সিলেক্ট করে 'মডেল লোড' বাটনে চাপ দিন (কিংবা সরাসরি ফাইন-টিউন শুরু করতে পারেন)।
+                        </div>
+                    </div>
+
+                    <!-- Multi-format Data Feed Uploader -->
+                    <div class="form-group">
+                        <label>📄 ডেটা ফিড ফাইল আপলোড (Feed PDF, TXT, MD, JSON, CSV):</label>
+                        <input type="file" id="llmDocInput" accept=".pdf,.txt,.md,.json,.csv" class="file-input" onchange="uploadAndExtractDoc(this)">
+                        <div id="pdfStatusBadge" class="file-hint" style="color: var(--accent-green); font-weight: 600; margin-top: 5px;">
+                            বা নিচের বক্সে সরাসরি যেকোনো টেক্সট পেস্ট করে ট্রেইন করতে পারেন।
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="llmTrainText">ফিড টেক্সট / ট্রেইনিং কর্পাস (Training Corpus)</label>
+                        <textarea id="llmTrainText" rows="4" class="select-input" style="font-family: var(--font-mono); font-size: 11px; resize: vertical;" placeholder="এখানে আপনার ট্রেইনিং টেক্সট পেস্ট করুন বা ওপরের বাটন থেকে PDF/TXT/JSON ফাইল আপলোড করুন...">কৃত্রিম বুদ্ধিমত্তা ও ডিপ লার্নিং বর্তমান প্রযুক্তির জগতে এক অভূতপূর্ব বিপ্লব নিয়ে এসেছে।
+সমান্তরাল কম্পিউটিং ও জিপিইউ এক্সিলারেশনের মাধ্যমে লার্জ ল্যাঙ্গুয়েজ মডেল (LLM) এবং নিউরাল নেটওয়ার্ক দ্রুত ট্রেইন করা সম্ভব হচ্ছে।
+মেশিন লার্নিং গণিত, ম্যাট্রিক্স গুণন এবং সম্ভাবনার সূত্রের উপর ভিত্তি করে স্বয়ংক্রিয়ভাবে নতুন প্যাটার্ন ও ভাষার জ্ঞান অর্জন করে।
+Deep learning and parallel tensor computation on NVIDIA CUDA GPUs enable rapid neural training and generative language modeling.</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="llmEpochs">ফাইন-টিউনিং স্টেপস (Fine-Tuning Steps: <span id="llmEpochsLabel">40</span>)</label>
+                        <input type="range" id="llmEpochs" min="10" max="100" step="5" value="40" oninput="document.getElementById('llmEpochsLabel').innerText = this.value">
+                    </div>
+
+                    <div class="form-group">
+                        <label>LoRA হাইপারপ্যারামিটার ও অপ্টিমাইজার (LoRA Hyperparameters)</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <small style="color: var(--text-muted); font-size: 10px;">LoRA Rank ($r$)</small>
+                                <select id="llmLoraRank" class="select-input" style="padding: 6px;">
+                                    <option value="4">Rank r=4 (0.05% params - Minimal VRAM)</option>
+                                    <option value="8" selected>Rank r=8 (0.1% params - Recommended)</option>
+                                    <option value="16">Rank r=16 (Higher capacity)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <small style="color: var(--text-muted); font-size: 10px;">Learning Rate ($\eta$)</small>
+                                <select id="llmLr" class="select-input" style="padding: 6px;">
+                                    <option value="0.0003" selected>3e-4 (Standard LoRA)</option>
+                                    <option value="0.0005">5e-4 (Fast convergence)</option>
+                                    <option value="0.001">1e-3 (Aggressive)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: AI Book Reader & HuggingFace Lightweight Model Studio -->
+                <div class="tab-content" id="tab-bookreader">
+                    <p class="tab-desc"><strong>হাগিংফেইস লাইটওয়েট AI মডেল ও পূর্ণাঙ্গ বই রিডার (Smart Book Reader & Q&A):</strong> Hugging Face থেকে হালকা কিন্তু শক্তিশালী মডেল (যেমন Qwen2.5-0.5B, SmolLM2-135M) সরাসরি ডাউনলোড করে চালান, যেকোনো সম্পূর্ণ বই (PDF/TXT) আপলোড করুন, অডিওবুক হিসেবে শুনুন এবং বইয়ের যেকোনো বিষয়ে এআই-এর সাথে প্রশ্ন-উত্তর ও সারসংক্ষেপ তৈরি করুন।</p>
+
+                    <!-- 1. Hugging Face Lightweight Model Downloader -->
+                    <div class="form-group">
+                        <label>🤖 Hugging Face লাইট মডেল নির্বাচন (Lightweight AI Model):</label>
+                        <div style="display: flex; gap: 8px;">
+                            <select id="bookHfModelSelect" class="select-input" style="flex: 1; font-weight: 600;">
+                                <option value="qwen" selected>⭐ Qwen2.5-0.5B-Instruct (~0.9GB - Multilingual & Bengali, Best Reasoning)</option>
+                                <option value="smollm">⚡ SmolLM2-135M-Instruct (~270MB - Ultra Fast & Lightweight)</option>
+                                <option value="tinyllama">💬 TinyLlama-1.1B-Chat (~2.2GB - Conversational Assistant)</option>
+                                <option value="distilgpt2">🚀 DistilGPT-2 (82M Params - Instant 0.3GB)</option>
+                            </select>
+                            <button type="button" class="preset-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700; white-space: nowrap; padding: 0 14px;" onclick="downloadAndLoadHfModel()">
+                                📥 মডেল নামান ও চালান
+                            </button>
+                        </div>
+                        <div id="bookHfStatus" class="file-hint" style="color: var(--accent-cyan); font-weight: 600; margin-top: 5px;">
+                            মডেল নির্বাচন করে বাটনে চাপ দিন (GTX 1650 4GB VRAM এর জন্য সম্পূর্ণ অপ্টিমাইজড)।
+                        </div>
+                    </div>
+
+                    <!-- 2. Book Ingestion Uploader -->
+                    <div class="form-group">
+                        <label>📚 সম্পূর্ণ বই আপলোড করুন (Upload Whole Book PDF / TXT):</label>
+                        <input type="file" id="bookFileInput" accept=".pdf,.txt,.md,.epub" class="file-input" onchange="uploadBookFile(this)">
+                        <div id="bookUploadStatus" class="file-hint" style="color: var(--accent-green); font-weight: 600; margin-top: 5px;">
+                            বা ডিফল্ট প্রিলোডেড বই "এআই ও ডিপ লার্নিং হ্যান্ডবুক" পড়ুন।
+                        </div>
+                    </div>
+
+                    <!-- 3. Chapter & Page Selector -->
+                    <div class="form-group">
+                        <label>📑 অধ্যায় ও সূচিপত্র নির্বাচন (Chapters & Sections):</label>
+                        <select id="bookChapterSelect" class="select-input" onchange="jumpToChapter(this.value)">
+                            <option value="0">অধ্যায় ১: কৃত্রিম বুদ্ধিমত্তা ও ডিপ লার্নিং সূচনা</option>
+                            <option value="1">অধ্যায় ২: টেন্সর কম্পিউটেশন ও CUDA প্যারালালিজম</option>
+                            <option value="2">অধ্যায় ৩: কনভোলিউশনাল নিউরাল নেটওয়ার্ক ও ইমেজ ফিল্টারিং</option>
+                            <option value="3">অধ্যায় ৪: লার্জ ল্যাঙ্গুয়েজ মডেল ও ট্রান্সফর্মার আর্কিটেকচার</option>
+                            <option value="4">অধ্যায় ৫: ভবিষ্যৎ প্রযুক্তি ও এআই অ্যাপ্লিকেশন</option>
+                        </select>
+                    </div>
+
+                    <!-- 4. Book Quick Action Buttons -->
+                    <div class="form-group">
+                        <label>⚡ বইটির এআই অ্যাকশনসমূহ (AI Book Actions):</label>
+                        <div class="matrix-preset-buttons">
+                            <button type="button" class="preset-btn" onclick="summarizeCurrentPage()">📝 এই পৃষ্ঠার সারাংশ</button>
+                            <button type="button" class="preset-btn" onclick="summarizeEntireBook()">📖 পুরো বইটির সারসংক্ষেপ</button>
+                            <button type="button" class="preset-btn" onclick="readPageAloud()">🔊 জোরে পড়ে শোনাও (Voice Audio)</button>
+                            <button type="button" class="preset-btn" style="background: rgba(239, 68, 68, 0.2); color: #f87171;" onclick="stopReadingAloud()">⏹️ ভয়েস থামান</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: JPG Matrix Transform Lab -->
+                <div class="tab-content" id="tab-jpgmatrix">
+                    <p class="tab-desc">একটি JPG ছবি মূলত কোটি কোটি সংখ্যার একটি <strong>3D ম্যাট্রিক্স [H, W, 3]</strong>। ট্রান্সফর্মেশন ম্যাট্রিক্স $\mathbf{M}$ দিয়ে গুণ করে ছবির পিক্সেল সংখ্যার পরিবর্তন ও ভিজ্যুয়াল আউটপুট পর্যবেক্ষণ করুন।</p>
+                    <div class="form-group">
+                        <label>JPG ফাইল ইনপুট (Upload JPG Image)</label>
+                        <input type="file" id="jpgMatrixInput" accept="image/jpeg,image/png" class="file-input">
+                        <div class="file-hint">ছবি না দিলে স্বয়ংক্রিয় কালার গ্রিড প্যাটার্ন ব্যবহৃত হবে।</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>প্রিসেট ট্রান্সফর্মেশন ম্যাট্রিক্স (Preset Matrices)</label>
+                        <div class="matrix-preset-buttons">
+                            <button type="button" class="preset-btn" onclick="applyMatrixPreset('sepia')">🎨 Sepia Matrix</button>
+                            <button type="button" class="preset-btn" onclick="applyMatrixPreset('gray')">⬛ Grayscale Matrix</button>
+                            <button type="button" class="preset-btn" onclick="applyMatrixPreset('invert')">🔄 Color Swap Matrix</button>
+                            <button type="button" class="preset-btn" onclick="applyMatrixPreset('boost')">⚡ High-Contrast</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>3x3 ট্রান্সফর্মেশন ম্যাট্রিক্স এডিটর ($M_{3 \times 3}$)</label>
+                        <div class="matrix-grid-input">
+                            <div class="matrix-row">
+                                <input type="number" step="0.01" id="m00" value="0.39" class="mat-cell">
+                                <input type="number" step="0.01" id="m01" value="0.77" class="mat-cell">
+                                <input type="number" step="0.01" id="m02" value="0.19" class="mat-cell">
+                            </div>
+                            <div class="matrix-row">
+                                <input type="number" step="0.01" id="m10" value="0.35" class="mat-cell">
+                                <input type="number" step="0.01" id="m11" value="0.69" class="mat-cell">
+                                <input type="number" step="0.01" id="m12" value="0.17" class="mat-cell">
+                            </div>
+                            <div class="matrix-row">
+                                <input type="number" step="0.01" id="m20" value="0.27" class="mat-cell">
+                                <input type="number" step="0.01" id="m21" value="0.53" class="mat-cell">
+                                <input type="number" step="0.01" id="m22" value="0.13" class="mat-cell">
+                            </div>
+                        </div>
+                        <div class="formula-badge">
+                            $$\begin{bmatrix} R' \\ G' \\ B' \end{bmatrix} = \mathbf{M} \times \begin{bmatrix} R \\ G \\ B \end{bmatrix}$$
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 1: 3D Map / Terrain Generation -->
+                <div class="tab-content active" id="tab-terrain3d">
+                    <p class="tab-desc">CUDA প্যারালাল কম্পিউটিং ব্যবহার করে <strong>3D টপোগ্রাফিক্যাল ম্যাপ ও ট্যারেন অবজেক্ট</strong> সিন্থেসিস করুন এবং সরাসরি <strong>.OBJ 3D মডেল</strong> হিসেবে ডাউনলোড করুন।</p>
+                    <div class="form-group">
+                        <label for="terrainGrid">গ্রিড রেজোলিউশন (<span id="terrainGridLabel">64</span> x <span id="terrainGridLabel2">64</span> ভার্টেক্স)</label>
+                        <input type="range" id="terrainGrid" min="32" max="128" step="16" value="64" oninput="document.getElementById('terrainGridLabel').innerText = this.value; document.getElementById('terrainGridLabel2').innerText = this.value;">
+                    </div>
+                    <div class="form-group">
+                        <label for="terrainScale">পাহাড়ের উচ্চতা স্কেল (Elevation Scale: <span id="terrainScaleLabel">15</span>)</label>
+                        <input type="range" id="terrainScale" min="5" max="35" step="5" value="15" oninput="document.getElementById('terrainScaleLabel').innerText = this.value">
+                    </div>
+                    <div class="form-group">
+                        <label for="terrainOctaves">ফ্র্যাক্টাল ডিটেইল (Octaves: <span id="terrainOctLabel">4</span>)</label>
+                        <input type="range" id="terrainOctaves" min="2" max="6" step="1" value="4" oninput="document.getElementById('terrainOctLabel').innerText = this.value">
+                    </div>
+                </div>
+
+                <!-- Tab 2: Equi-areal Geometry Transformation -->
+                <div class="tab-content" id="tab-geometry">
+                    <p class="tab-desc"><strong>ক্ষেত্রফল অপরিবর্তিত রেখে আকার পরিবর্তন (Area-Preserving Morphing):</strong> একটি ত্রিভুজকে আয়তক্ষেত্র, বৃত্ত বা শিয়ার ত্রিভুজে রূপান্তর করুন যেখানে ক্ষেত্রফল ($\text{Area} = \text{Constant}$) পুরোপুরি অপরিবর্তিত থাকে।</p>
+                    <div class="form-group">
+                        <label for="geomBase">ত্রিভুজের ভূমি (Base: <span id="geomBaseLabel">140</span> px)</label>
+                        <input type="range" id="geomBase" min="80" max="220" step="10" value="140" oninput="document.getElementById('geomBaseLabel').innerText = this.value; runGeometryTransform();">
+                    </div>
+                    <div class="form-group">
+                        <label for="geomHeight">ত্রিভুজের উচ্চতা (Height: <span id="geomHeightLabel">90</span> px)</label>
+                        <input type="range" id="geomHeight" min="50" max="160" step="10" value="90" oninput="document.getElementById('geomHeightLabel').innerText = this.value; runGeometryTransform();">
+                    </div>
+                    <div class="form-group">
+                        <label for="geomShear">শিয়ার বিকৃতি (Shear Distortion: <span id="geomShearLabel">0.6</span>)</label>
+                        <input type="range" id="geomShear" min="-1.5" max="1.5" step="0.1" value="0.6" oninput="document.getElementById('geomShearLabel').innerText = this.value; runGeometryTransform();">
+                    </div>
+                </div>
+
+                <!-- Tab 3: Image Processing -->
+                <div class="tab-content" id="tab-image">
+                    <p class="tab-desc">আপনার ছবি আপলোড করে 2D Convolution (Sobel Edge, Gaussian Blur, Sharpen) দিয়ে GPU vs CPU ফিল্টারিং স্পিড পরীক্ষা করুন।</p>
+                    <div class="form-group">
+                        <label>ইমেজ ফাইল ইনপুট (Upload Image)</label>
+                        <input type="file" id="imageInput" accept="image/*" class="file-input" onchange="previewInputImage(this)">
+                        <div class="file-hint">ছবি না দিলে স্বয়ংক্রিয় ফুল এইচডি (1080p) টেস্ট প্যাটার্ন ব্যবহৃত হবে।</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="imageFilter">ফিল্টার কার্নেল নির্বাচন (Choose from 16+ GPGPU Filters)</label>
+                        <select id="imageFilter" class="select-input" onchange="toggleCustomKernelInput(this.value)">
+                            <optgroup label="⚡ এজ ও রূপরেখা সনাক্তকরণ (Edge & Contour Detection)">
+                                <option value="sobel" selected>Sobel 3x3 (Classic Edge Detection)</option>
+                                <option value="sobel_x">Sobel X (Vertical Edges - খাড়া রেখা)</option>
+                                <option value="sobel_y">Sobel Y (Horizontal Edges - অনুভূমিক রেখা)</option>
+                                <option value="laplacian">Laplacian (2nd Derivative High-Pass)</option>
+                                <option value="laplacian_diag">Laplacian All-Direction (চারপাশের বর্ডার)</option>
+                                <option value="prewitt">Prewitt Edge Filter (প্রিউইট ফিল্টার)</option>
+                                <option value="scharr">Scharr High-Accuracy Gradient</option>
+                                <option value="outline">Outline Silhouette (গাঢ় রূপরেখা)</option>
+                            </optgroup>
+                            <optgroup label="🌫️ ব্লারিং ও স্মুদিং (Smoothing & Blur)">
+                                <option value="gaussian">Gaussian Blur 5x5 (স্মুথ ব্লার)</option>
+                                <option value="heavy_gaussian">Deep Gaussian 7x7 (ভারী ব্লার)</option>
+                                <option value="box_blur">Box Mean Blur 5x5 (গড় ব্লার)</option>
+                                <option value="motion_blur">Diagonal Motion Blur 7x7 (গতির ইফেক্ট)</option>
+                            </optgroup>
+                            <optgroup label="🔪 শার্পনিং ও ডিটেইল (Sharpen & Texture)">
+                                <option value="sharpen">Classic Sharpen (তীক্ষ্ণতা বৃদ্ধি)</option>
+                                <option value="unsharp_high">Extreme Unsharp High-Pass (অতি-তীক্ষ্ণ)</option>
+                            </optgroup>
+                            <optgroup label="🗿 ৩ডি ও শৈল্পিক কার্নেল (Artistic & Relief 3D)">
+                                <option value="emboss">3D Relief Emboss (খোদাই ইফেক্ট)</option>
+                                <option value="emboss_heavy">Heavy 45° Bas-Relief Emboss</option>
+                            </optgroup>
+                            <optgroup label="🛠️ কাস্টম কার্নেল (Custom 3x3 Kernel)">
+                                <option value="custom">কাস্টম ৩x৩ কনভল্যুশন কার্নেল (User Defined)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <!-- Custom Kernel Input Grid (shown when custom is selected) -->
+                    <div class="form-group" id="customKernelBox" style="display: none;">
+                        <label>কাস্টম ৩x৩ কার্নেলের মান ইনপুট দিন:</label>
+                        <div class="matrix-grid-input">
+                            <div class="matrix-row">
+                                <input type="number" step="0.1" id="k00" value="0" class="mat-cell">
+                                <input type="number" step="0.1" id="k01" value="-1" class="mat-cell">
+                                <input type="number" step="0.1" id="k02" value="0" class="mat-cell">
+                            </div>
+                            <div class="matrix-row">
+                                <input type="number" step="0.1" id="k10" value="-1" class="mat-cell">
+                                <input type="number" step="0.1" id="k11" value="5" class="mat-cell">
+                                <input type="number" step="0.1" id="k12" value="-1" class="mat-cell">
+                            </div>
+                            <div class="matrix-row">
+                                <input type="number" step="0.1" id="k20" value="0" class="mat-cell">
+                                <input type="number" step="0.1" id="k21" value="-1" class="mat-cell">
+                                <input type="number" step="0.1" id="k22" value="0" class="mat-cell">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 4: Audio Signal Analysis -->
+                <div class="tab-content" id="tab-audio">
+                    <p class="tab-desc">অডিও সিগন্যালে <strong>cuFFT (CUDA Fast Fourier Transform)</strong> এবং STFT প্রয়োগ করে ফ্রিকোয়েন্সি স্পেকট্রোগ্রাম তৈরি।</p>
+                    <div class="form-group">
+                        <label>অডিও ফাইল ইনপুট (.wav ফাইল)</label>
+                        <input type="file" id="audioInput" accept=".wav" class="file-input">
+                        <div class="file-hint">ফাইল না দিলে স্বয়ংক্রিয় 44.1kHz মাল্টি-টোন সিন্থেটিক সিগন্যাল ব্যবহৃত হবে।</div>
+                    </div>
+                </div>
+
+                <!-- Tab 5: Matrix Multiplication -->
+                <div class="tab-content" id="tab-matrix">
+                    <p class="tab-desc">বৃহৎ $N \times N$ ম্যাট্রিক্স ডট প্রোডাক্ট ($O(N^3)$ ফ্লোটিং পয়েন্ট অপারেশন)।</p>
+                    <div class="form-group">
+                        <label for="matrixSize">ম্যাট্রিক্স সাইজ (<span id="matrixSizeLabel">3000</span> x <span id="matrixSizeLabel2">3000</span>)</label>
+                        <input type="range" id="matrixSize" min="1000" max="6000" step="500" value="3000" oninput="updateMatrixLabel(this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label for="matrixPrecision">ডাটা প্রিসিশন (Precision)</label>
+                        <select id="matrixPrecision" class="select-input">
+                            <option value="float32" selected>Float32 (Single Precision)</option>
+                            <option value="float16">Float16 (Half Precision - Tensor Cores)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tab 6: Mandelbrot Fractal -->
+                <div class="tab-content" id="tab-mandelbrot">
+                    <p class="tab-desc">জটিল সংখ্যার পুনরাবৃত্তি ($Z_{n+1} = Z_n^2 + C$) দ্বারা ফ্র্যাক্টাল রেন্ডারিং সমস্যা।</p>
+                    <div class="form-group">
+                        <label for="mandelRes">ফ্র্যাক্টাল রেজোলিউশন</label>
+                        <select id="mandelRes" class="select-input">
+                            <option value="1200x800" selected>1200 x 800 (Fast)</option>
+                            <option value="1920x1080">1920 x 1080 (Full HD)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="mandelIter">পুনরাবৃত্তি (Iterations: <span id="mandelIterLabel">100</span>)</label>
+                        <input type="range" id="mandelIter" min="50" max="250" step="25" value="100" oninput="document.getElementById('mandelIterLabel').innerText = this.value">
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <div class="action-section">
+                    <button class="btn-run" id="btnRun" onclick="runCurrentBenchmark()">
+                        <span class="btn-text">🚀 রান ও সিন্থেসিস করুন (Execute Test)</span>
+                        <div class="spinner" id="btnSpinner" style="display: none;"></div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Right Panel: Results & Visual Outputs -->
+            <section class="panel results-panel">
+                <h2 class="panel-title">2. আউটপুট ও 3D ইন্টারঅ্যাক্টিভ ভিজ্যুয়ালাইজেশন</h2>
+
+                <!-- Live Speedup Banner -->
+                <div class="speedup-banner" id="speedupBanner">
+                    <div class="speedup-icon">⚡</div>
+                    <div>
+                        <div class="speedup-title" id="speedupTitle">রেডি! যেকোনো টেস্ট সিলেক্ট করে রান করুন</div>
+                        <div class="speedup-desc" id="speedupDesc">CPU এবং GPU-এর এক্সিকিউশন টাইম ও ভিজ্যুয়াল আউটপুট নিচে প্রদর্শিত হবে।</div>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card cpu-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">🖥️</span>
+                            <span class="metric-name">CPU Time</span>
+                        </div>
+                        <div class="metric-val" id="cpuTimeVal">-- ms</div>
+                        <div class="metric-sub" id="cpuSubVal">Standard Threads</div>
+                    </div>
+
+                    <div class="metric-card gpu-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">🎮</span>
+                            <span class="metric-name">GPU (CUDA) Time</span>
+                        </div>
+                        <div class="metric-val" id="gpuTimeVal">-- ms</div>
+                        <div class="metric-sub" id="gpuSubVal">Massive Parallelism</div>
+                    </div>
+
+                    <div class="metric-card speedup-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">🚀</span>
+                            <span class="metric-name">Speedup Factor</span>
+                        </div>
+                        <div class="metric-val" id="speedupVal">-- x</div>
+                        <div class="metric-sub" id="speedupSubVal">Faster Execution</div>
+                    </div>
+                </div>
+
+                <!-- Vision & Object Detection Visual Container -->
+                <div class="visual-card" id="visionContainer" style="display: block;">
+                    <div class="card-header-action">
+                        <h3>🎯 কম্পিউটার ভিশন: অবজেক্ট ডিটেকশন ও রানিং ভিডিও অ্যানালাইসিস</h3>
+                        <span class="badge-verified" id="visionBadge" style="font-size: 13px;">সনাক্তকৃত মোট অবজেক্ট: 0 টি</span>
+                    </div>
+
+                    <!-- Image Detection Visual Result View -->
+                    <div id="visionImageView">
+                        <div class="image-comparison-grid">
+                            <div class="img-box">
+                                <span>অরিজিনাল ইনপুট ছবি:</span>
+                                <img id="visionOrigImg" src="" alt="Original Image">
+                            </div>
+                            <div class="img-box">
+                                <span>ডিটেক্টেড বাউন্ডিং বক্স ও অবজেক্ট কাউন্ট:</span>
+                                <img id="visionAnnotatedImg" src="" alt="Annotated Detections">
+                            </div>
+                        </div>
+
+                        <!-- Detected Objects Breakdown List -->
+                        <div id="visionObjectsList" style="margin-top: 14px; font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); max-height: 120px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- Running Video Live Analyzer View -->
+                    <div id="visionVideoView" style="display: none;">
+                        <div style="position: relative; width: 100%; border-radius: 8px; overflow: hidden; background: #000; border: 1px solid var(--card-border);">
+                            <video id="visionVideoElement" controls autoplay muted loop style="width: 100%; display: block; max-height: 360px; object-fit: contain;"></video>
+                            <canvas id="visionVideoCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                        </div>
+                        <div class="mesh-stats-bar" style="margin-top: 8px;">
+                            <span>লাইভ ট্র্যাকিং অবজেক্ট: <strong id="vidLiveObjCount">0</strong> টি</span>
+                            <span>রানিং স্পিড: <strong id="vidLiveFps">-- FPS</strong></span>
+                            <span>ভিডিও রেজোলিউশন: <strong id="vidLiveRes">--</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Direct Math Formula Output Container -->
+                <div class="visual-card" id="directMathContainer" style="display: none;">
+                    <div class="card-header-action">
+                        <h3>📐 গাণিতিক সমীকরণ হিসাব ও $f(x)$ ফাংশন কার্ভ প্লট</h3>
+                        <span class="badge-verified" id="mathActiveExpr">f(x) = ...</span>
+                    </div>
+
+                    <!-- Math Result Statistics Bar -->
+                    <div class="mesh-stats-bar">
+                        <span>নির্দিষ্ট ইন্টিগ্রাল $\int f(x)dx$: <strong id="mathIntegral">--</strong></span>
+                        <span>সর্বোচ্চ মান (Max): <strong id="mathMax">--</strong></span>
+                        <span>সর্বনিম্ন মান (Min): <strong id="mathMin">--</strong></span>
+                        <span>গড় মান (Mean): <strong id="mathMean">--</strong></span>
+                    </div>
+
+                    <!-- Real-time 2D Function Curve Plot -->
+                    <div style="margin-top: 14px;">
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">📈 রিয়েল-টাইম ২ডি ফাংশন কার্ভ প্লট (Interactive 2D Curve Plot):</span>
+                        <div style="height: 220px; position: relative; margin-top: 6px;">
+                            <canvas id="directMathChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LLM Studio Output Container -->
+                <div class="visual-card" id="llmContainer" style="display: none;">
+                    <div class="card-header-action">
+                        <h3>🧠 LLM ফাইন-টিউনিং ও ইনফ্যারেন্স ড্যাশবোর্ড</h3>
+                        <span class="badge-verified" id="activeModelBadge">Model: Not Loaded</span>
+                        <a href="/api/llm/export" class="btn-export" id="btnExportLlm" title="Download PyTorch Model / LoRA Weights">
+                            💾 Export Weights (.pt)
+                        </a>
+                    </div>
+
+                    <!-- Training Stats Bar -->
+                    <div class="mesh-stats-bar">
+                        <span>মডেল: <strong id="llmActiveModelName">GPT-2 Base</strong></span>
+                        <span>প্যারামিটার: <strong id="llmParamCount">--</strong></span>
+                        <span>স্পিড: <strong id="llmThroughput">-- Tokens/sec</strong></span>
+                        <span>VRAM ব্যবহৃত: <strong id="llmVram">-- MB</strong></span>
+                        <span>উৎস: <strong id="llmDocSource">Default Corpus</strong></span>
+                    </div>
+
+                    <!-- Live Loss Curve Canvas -->
+                    <div style="margin-top: 14px;">
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">📉 লাইভ লস ডেসেন্ট কার্ভ (Training Loss vs Steps):</span>
+                        <div style="height: 180px; position: relative; margin-top: 6px;">
+                            <canvas id="llmLossChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Text Generation Playground -->
+                    <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--card-border);">
+                        <h4 style="font-size: 13px; color: var(--accent-cyan); margin-bottom: 8px;">
+                            ✨ ট্রেইন্ড মডেল টেস্ট করুন (Text Generation Playground):
+                        </h4>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="text" id="llmPrompt" placeholder="শুরুর প্রম্পট লিখুন (যেমন: কৃত্রিম বুদ্ধিমত্তা...)" class="select-input" style="flex: 1;" value="কৃত্রিম বুদ্ধিমত্তা">
+                            <button type="button" class="preset-btn" style="padding: 0 16px; background: var(--accent-blue); color: #fff;" onclick="generateFromLlm()">Generate</button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
+                            <span>Temperature: <strong id="llmTempLabel" style="color: var(--accent-cyan);">0.8</strong></span>
+                            <input type="range" id="llmTemp" min="0.2" max="1.4" step="0.1" value="0.8" style="width: 140px;" oninput="document.getElementById('llmTempLabel').innerText = this.value">
+                        </div>
+                        <div id="llmOutputText" style="background: #0d0f14; border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 12px; color: #34d399; min-height: 70px; white-space: pre-wrap;">মডেল ট্রেইন করার পর এখানে স্বয়ংক্রিয় জেনারেটেড টেক্সট প্রদর্শিত হবে...</div>
+                    </div>
+                </div>
+
+                <!-- AI Book Reader & Q&A Workspace Visual Container -->
+                <div class="visual-card" id="bookReaderContainer" style="display: none;">
+                    <div class="card-header-action">
+                        <h3 id="bookReaderTitle">📖 এআই বই রিডার: কম্পিউটার ভিশন ও ডিপ লার্নিং হ্যান্ডবুক</h3>
+                        <span class="badge-verified" id="bookActiveModelBadge">Model: Qwen2.5-0.5B (Active)</span>
+                    </div>
+
+                    <!-- Book Stats Bar -->
+                    <div class="mesh-stats-bar">
+                        <span>বর্তমান পৃষ্ঠা: <strong id="bookCurPage">১</strong> / <strong id="bookTotalPages">৫</strong></span>
+                        <span>মোট শব্দ: <strong id="bookTotalWords">২,৪৫০</strong></span>
+                        <span>ভয়েস স্পিড: <strong id="bookReadSpeed">1.0x Audio</strong></span>
+                        <span>হাগিংফেইস মডেল: <strong id="bookModelNameDisplay">Qwen2.5-0.5B</strong></span>
+                    </div>
+
+                    <!-- Dual Split Layout: Left side Book Text Reader, Right side AI Chat Assistant -->
+                    <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 14px; margin-top: 14px;">
+                        <!-- Left: Formatted Book Reader Page View -->
+                        <div style="background: #090c14; border: 1px solid var(--card-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 10px;">
+                                <span style="font-size: 12px; font-weight: 700; color: var(--accent-cyan);" id="bookPageHeader">📄 পৃষ্ঠা ১ (ভূমিকা ও সূচনা)</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="preset-btn" style="padding: 2px 8px; font-size: 11px;" onclick="prevBookPage()">◀ পূর্ববর্তী</button>
+                                    <button type="button" class="preset-btn" style="padding: 2px 8px; font-size: 11px;" onclick="nextBookPage()">পরবর্তী ▶</button>
+                                    <button type="button" class="preset-btn" style="padding: 2px 8px; font-size: 11px; background: var(--accent-green); color: #000; font-weight: 700;" onclick="readPageAloud()">🔊 শুনুন</button>
+                                </div>
+                            </div>
+
+                            <!-- Page Content Box -->
+                            <div id="bookPageContent" style="flex: 1; font-family: 'Outfit', sans-serif; font-size: 13px; line-height: 1.7; color: #e5e7eb; max-height: 380px; overflow-y: auto; padding-right: 6px; white-space: pre-wrap;">
+                                বইটি লোড হচ্ছে...
+                            </div>
+                        </div>
+
+                        <!-- Right: AI Book Q&A & Assistant Chat -->
+                        <div style="background: #090c14; border: 1px solid var(--card-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column;">
+                            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                                <span>💬 বইয়ের সাথে এআই চ্যাট (Ask Book):</span>
+                                <span id="aiChatStatus" style="font-size: 10px; color: var(--text-muted);">রেডি</span>
+                            </div>
+
+                            <!-- Chat messages stream -->
+                            <div id="bookChatHistory" style="flex: 1; min-height: 240px; max-height: 280px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px; margin-bottom: 10px; font-size: 12px; display: flex; flex-direction: column; gap: 8px;">
+                                <div style="background: rgba(6, 182, 212, 0.12); border-left: 3px solid var(--accent-cyan); padding: 8px 10px; border-radius: 4px; color: #d1d5db;">
+                                    👋 নমস্কার! আমি আপনার <strong>AI Book Assistant</strong>। এই বইটির যেকোনো অধ্যায়, পৃষ্ঠা বা নির্দিষ্ট কোনো টপিক সম্পর্কে আমাকে প্রশ্ন করতে পারেন বা সারসংক্ষেপ বের করতে পারেন।
+                                </div>
+                            </div>
+
+                            <!-- Quick question pills -->
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;">
+                                <button type="button" class="preset-btn" style="font-size: 10px; padding: 2px 6px;" onclick="quickBookPrompt('এই বইটির মূল সারসংক্ষেপ সংক্ষেপে বলো')">💡 সারসংক্ষেপ</button>
+                                <button type="button" class="preset-btn" style="font-size: 10px; padding: 2px 6px;" onclick="quickBookPrompt('বর্তমান পৃষ্ঠার মূল পয়েন্টগুলো কী কী?')">📌 পৃষ্ঠার পয়েন্ট</button>
+                                <button type="button" class="preset-btn" style="font-size: 10px; padding: 2px 6px;" onclick="quickBookPrompt('এই অধ্যায়ের গুরুত্বপূর্ণ প্রশ্ন ও উত্তর বের করো')">❓ প্রশ্ন-উত্তর</button>
+                            </div>
+
+                            <!-- Chat input -->
+                            <div style="display: flex; gap: 6px;">
+                                <input type="text" id="bookQuestionInput" placeholder="বইটি সম্পর্কে যেকোনো প্রশ্ন লিখুন..." class="select-input" style="flex: 1; font-size: 12px;" onkeydown="if(event.key==='Enter') askBookAi()">
+                                <button type="button" class="preset-btn" style="background: var(--accent-blue); color: #fff; font-weight: 700; padding: 0 12px;" onclick="askBookAi()">জিজ্ঞাসা</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3D WebGL Canvas Container -->
+                <div class="visual-card" id="terrain3dContainer" style="display: none;">
+                    <div class="card-header-action">
+                        <h3>🏔️ 3D টপোগ্রাফিক্যাল ম্যাপ ভিউয়ার (মাউস দিয়ে ঘোরান ও জুম করুন)</h3>
+                        <a href="/api/export/3d_obj" class="btn-export" id="btnExportObj" title="Download as .OBJ 3D Model">
+                            💾 Download .OBJ 3D Model
+                        </a>
+                    </div>
+                    <div id="threejsViewport" class="threejs-canvas-wrapper"></div>
+                    <div class="mesh-stats-bar" id="meshStatsBar">
+                        <span>Vertices: <strong id="meshVertCount">-</strong></span>
+                        <span>Faces: <strong id="meshFaceCount">-</strong></span>
+                        <span>Generated on: <strong id="meshDevice">-</strong></span>
+                    </div>
+                </div>
+
+                <!-- Equi-areal Geometry Canvas Container -->
+                <div class="visual-card" id="geometryContainer" style="display: none;">
+                    <h3>📐 ক্ষেত্রফল অপরিবর্তিত জ্যামিতিক রূপান্তর অ্যানিমেশন</h3>
+                    <div class="geom-canvas-wrapper">
+                        <canvas id="geometryCanvas" width="680" height="320"></canvas>
+                    </div>
+                    <div class="geom-area-legend" id="geomLegend">
+                        <span>মূল ক্ষেত্রফল: <strong id="legendTargetArea">--</strong> px²</span>
+                        <span>রূপান্তরিত ক্ষেত্রফল: <strong id="legendCurrentArea">--</strong> px²</span>
+                        <span class="badge-verified">✓ ক্ষেত্রফল হুবহু এক</span>
+                    </div>
+                </div>
+
+                <!-- Visual Output: JPG Matrix Transform Lab -->
+                <div class="visual-card" id="jpgMatrixContainer" style="display: none;">
+                    <h3>🧮 JPG পিক্সেল ম্যাট্রিক্স ভিজ্যুয়ালাইজেশন ও গুণফল আউটপুট</h3>
+                    <div class="image-comparison-grid">
+                        <div class="img-box">
+                            <span>মূল JPG ছবি:</span>
+                            <img id="jpgMatOriginalImg" src="" alt="Original JPG">
+                        </div>
+                        <div class="img-box">
+                            <span>ম্যাট্রিক্স গুণনের পর ছবি ($C' = C \times \mathbf{M}^T$):</span>
+                            <img id="jpgMatTransformedImg" src="" alt="Transformed JPG">
+                        </div>
+                    </div>
+
+                    <!-- Numerical Matrix Heatmap Grid -->
+                    <div class="matrix-inspect-container">
+                        <h4 style="font-size: 13px; margin: 14px 0 8px 0; color: var(--accent-cyan);">
+                            🔬 ছবির কেন্দ্রবিন্দুর 8x8 পিক্সেল ম্যাট্রিক্সের ভেতরের বাস্তব সংখ্যা (RGB Values):
+                        </h4>
+                        <div class="matrix-tables-comparison">
+                            <div class="matrix-table-wrap">
+                                <div class="mat-table-title">মূল ম্যাট্রিক্সের সংখ্যাসমূহ [R, G, B]</div>
+                                <div id="origMatrixPatchGrid" class="patch-matrix-grid"></div>
+                            </div>
+                            <div class="matrix-arrow">➡️ $\mathbf{M}$ গুণ ➡️</div>
+                            <div class="matrix-table-wrap">
+                                <div class="mat-table-title">গুণফলের পর নতুন ম্যাট্রিক্স সংখ্যাসমূহ [R', G', B']</div>
+                                <div id="transformedMatrixPatchGrid" class="patch-matrix-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visual Output 1: Image Comparison -->
+                <div class="visual-card" id="imageComparisonContainer" style="display: none;">
+                    <h3>🖼️ ইমেজ প্রসেসিং ভিজ্যুয়াল আউটপুট (Original vs GPU Filtered)</h3>
+                    <div class="image-comparison-grid">
+                        <div class="img-box">
+                            <span>অরিজিনাল ইনপুট ছবি:</span>
+                            <img id="imgOriginal" src="" alt="Original Image">
+                        </div>
+                        <div class="img-box">
+                            <span>GPU ফিল্টারড ছবি:</span>
+                            <img id="imgProcessed" src="" alt="Processed Image">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visual Output 2: Audio Spectrogram Heatmap -->
+                <div class="visual-card" id="audioSpectrogramContainer" style="display: none;">
+                    <h3>🎵 অডিও ফ্রিকোয়েন্সি স্পেকট্রোগ্রাম হিটম্যাপ (cuFFT Visualization)</h3>
+                    <div class="spectrogram-box">
+                        <img id="audioSpectrogramImg" src="" alt="Audio Spectrogram">
+                        <div class="spec-axis-info">
+                            <span>0 kHz</span>
+                            <span>ফ্রিকোয়েন্সি স্পেকট্রাম (Hann Window STFT)</span>
+                            <span>22.05 kHz</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visual Output 3: Fractal Output -->
+                <div class="visual-card" id="fractalContainer" style="display: none;">
+                    <h3>🌀 Mandelbrot Fractal রেন্ডার আউটপুট:</h3>
+                    <img id="mandelbrotImage" src="" alt="Mandelbrot Fractal" style="width: 100%; border-radius: 8px;">
+                </div>
+
+                <!-- Performance Chart Container -->
+                <div class="chart-container">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </section>
+        </main>
+
+        <!-- Benchmark History with Pagination [5] -->
+        <section class="history-section">
+            <div class="history-header">
+                <div>
+                    <h2>পূর্ববর্তী টেস্টের হিস্ট্রি (Persistent History)</h2>
+                    <span style="font-size: 11px; color: #10b981; font-family: var(--font-mono);">💾 SQLite3 Database Active (benchmark_history.db) — পেজিনেশন [Pagination 5 / Page]</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
+                        <span>প্রতি পেজে:</span>
+                        <select id="historyPageLimit" class="select-input" style="padding: 2px 6px; font-size: 11px;" onchange="changeHistoryLimit(this.value)">
+                            <option value="5" selected>5 টি</option>
+                            <option value="10">10 টি</option>
+                            <option value="25">25 টি</option>
+                        </select>
+                    </div>
+                    <button class="btn-clear" onclick="clearHistory()">Clear History</button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="history-table" id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>টাইম</th>
+                            <th>মোড / সমস্যা</th>
+                            <th>প্যারামিটার</th>
+                            <th>CPU Time</th>
+                            <th>GPU Time</th>
+                            <th>স্পিডআপ (Speedup)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody">
+                        <tr class="empty-row"><td colspan="6">এখনো কোনো টেস্ট রান করা হয়নি।</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Controls Bar [5 per page] -->
+            <div id="historyPaginationBar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--card-border); font-size: 12px; font-family: var(--font-mono);">
+                <div id="historyPageInfo" style="color: var(--text-secondary);">
+                    দেখাচ্ছে: <strong id="histStartIdx" style="color: var(--accent-cyan);">0</strong> - <strong id="histEndIdx" style="color: var(--accent-cyan);">0</strong> (মোট <strong id="histTotalRecords" style="color: #fff;">0</strong> টি সংরক্ষিত রেকর্ড)
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" class="preset-btn" id="btnHistPrev" onclick="navHistoryPage(-1)" style="padding: 4px 12px; font-size: 11px; font-weight: 600;">
+                        ◀ পূর্ববর্তী (Prev)
+                    </button>
+                    <span style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 4px; font-size: 11px;">
+                        পেজ <strong id="histCurrentPage" style="color: #34d399;">1</strong> / <strong id="histTotalPages">1</strong>
+                    </span>
+                    <button type="button" class="preset-btn" id="btnHistNext" onclick="navHistoryPage(1)" style="padding: 4px 12px; font-size: 11px; font-weight: 600;">
+                        পরবর্তী (Next) ▶
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
