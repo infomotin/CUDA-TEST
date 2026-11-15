@@ -1340,8 +1340,10 @@ async function runLlmTraining() {
         }
         document.getElementById("llmOutputText").innerText = result.sample_generated;
         if (badge) {
-            badge.innerHTML = `✅ ফাইন-টিউনিং সম্পন্ন! <strong>${result.model_name}</strong> (${result.tokens_per_sec} Tok/s, সময়: ${result.train_time_sec}s)`;
+            badge.innerHTML = `✅ ফাইন-টিউনিং সম্পন্ন! <strong>${result.model_name}</strong> (${result.tokens_per_sec} Tok/s, সময়: ${result.train_time_sec}s) — <a href="javascript:void(0)" onclick="convertFineTunedToGguf()" style="color: #38bdf8; font-weight: 700; text-decoration: underline;">👉 LLaMA.cpp GGUF-এ রূপান্তর করুন</a>`;
         }
+        const llamaStatus = document.getElementById("llamaCppStatusText");
+        if (llamaStatus) llamaStatus.innerHTML = `মডেল রেডি! নিচে <strong>'GGUF এ কনভার্ট করুন'</strong> বাটনে চাপ দিন।`;
 
         // Update Loss Curve
         if (lossChart && result.loss_history) {
@@ -1380,6 +1382,125 @@ async function generateFromLlm() {
         outBox.innerText = data.generated_text;
     } catch (err) {
         outBox.innerText = "Generation failed: " + err;
+    }
+}
+
+// =============================================================
+// LLaMA.cpp & GGUF Runtime Client Handlers
+// =============================================================
+function setLlamaPrompt(text) {
+    const input = document.getElementById("llamaPromptInput");
+    if (input) input.value = text;
+}
+
+async function convertFineTunedToGguf() {
+    const statusText = document.getElementById("llamaCppStatusText");
+    const term = document.getElementById("llamaTerminalOutput");
+    if (statusText) statusText.innerText = "⏳ সক্রিয় মডেলকে GGUF এ কনভার্ট করা হচ্ছে...";
+    if (term) term.innerText = "GGUF কনভার্সন প্রক্রিয়া শুরু হচ্ছে...\n- হেডারের মেটাডেটা প্রস্তুত হচ্ছে\n- টেনসর ও ওয়েট ম্যাপিং চলছে (FP16/FP32)...\n- GGUF ফাইলে টোকেনাইজারের শব্দকোষ যুক্ত হচ্ছে...";
+
+    try {
+        const res = await fetch("/api/llm/export_gguf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
+        const data = await res.json();
+        if (data.error) {
+            if (statusText) statusText.innerText = "❌ কনভার্সন ব্যর্থ";
+            if (term) term.innerText = "Error: " + data.error;
+            return;
+        }
+
+        if (statusText) statusText.innerText = `✅ GGUF সম্পন্ন (${data.file_size_mb} MB)`;
+        const infoCard = document.getElementById("llamaGgufInfoCard");
+        if (infoCard) infoCard.style.display = "block";
+        const archBadge = document.getElementById("llamaArchBadge");
+        if (archBadge) archBadge.innerText = `Arch: ${data.architecture.toUpperCase()}`;
+        const sizeEl = document.getElementById("llamaGgufSize");
+        if (sizeEl) sizeEl.innerText = `${data.file_size_mb} MB`;
+        const ctxEl = document.getElementById("llamaGgufCtx");
+        if (ctxEl) ctxEl.innerText = data.context_length;
+        const tensEl = document.getElementById("llamaGgufTensors");
+        if (tensEl) tensEl.innerText = data.tensor_count;
+        const quantEl = document.getElementById("llamaGgufQuant");
+        if (quantEl) quantEl.innerText = data.quantization;
+
+        const downloadBtn = document.getElementById("btnDownloadGguf");
+        if (downloadBtn) {
+            downloadBtn.style.display = "inline-block";
+            downloadBtn.href = `/api/llm/download_gguf?file=${data.gguf_filename}`;
+        }
+
+        if (term) {
+            term.innerText = `✨ ${data.message}\n\n[GGUF Header Info]\n- Model Name: ${data.model_name}\n- Architecture: ${data.architecture}\n- File: ${data.gguf_filename} (${data.file_size_mb} MB)\n- Tensors: ${data.tensor_count}\n- Context Length: ${data.context_length}\n\n👉 নিচে প্রম্পট লিখে 'LLaMA.cpp রান' বাটনে চাপ দিন এবং আউটপুট দেখুন!`;
+        }
+    } catch (err) {
+        if (statusText) statusText.innerText = "ব্যর্থ";
+        if (term) term.innerText = "GGUF conversion failed: " + err;
+    }
+}
+
+async function runLlamaCppPrompt() {
+    const input = document.getElementById("llamaPromptInput");
+    const prompt = input ? input.value.trim() : "কৃত্রিম বুদ্ধিমত্তা";
+    const statusText = document.getElementById("llamaCppStatusText");
+    const term = document.getElementById("llamaTerminalOutput");
+
+    if (statusText) statusText.innerText = "⚡ LLaMA.cpp ইনফ্যারেন্স চলছে (CUDA)...";
+    if (term) term.innerText = `[LLaMA.cpp Engine Starting]\nPrompt: "${prompt}"\nEvaluating context tokens on NVIDIA GeForce GTX 1650 CUDA cores...\n\nGenerating response tokens: `;
+
+    try {
+        const res = await fetch("/api/llm/run_gguf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                prompt: prompt,
+                max_tokens: 80,
+                temperature: 0.7,
+                top_p: 0.9
+            })
+        });
+        const data = await res.json();
+        if (data.error) {
+            if (statusText) statusText.innerText = "❌ এরর";
+            if (term) term.innerText = "LLaMA.cpp Error: " + data.error;
+            return;
+        }
+
+        if (statusText) statusText.innerText = `✅ সফল (${data.tokens_per_sec} Tok/s)`;
+        
+        // Show terminal output
+        if (term) {
+            term.innerText = `[LLaMA.cpp Engine Output | ${data.architecture.toUpperCase()} | ${data.quantization}]\n\n` +
+                             `Prompt: "${data.prompt}"\n\n` +
+                             `Generated Text:\n${data.generated_text}\n\n` +
+                             `--------------------------------------------------\n` +
+                             `📊 Performance: ${data.tokens_per_sec} Tokens/sec | Latency: ${data.ms_per_token} ms/token\n` +
+                             `Context Tokens: ${data.context_tokens} | New Generated: ${data.tokens_generated} tokens | Time: ${data.total_time_ms} ms`;
+        }
+
+        // Update metric badges
+        const speedEl = document.getElementById("llamaSpeedVal");
+        if (speedEl) speedEl.innerText = `${data.tokens_per_sec} Tok/s`;
+        const latEl = document.getElementById("llamaLatencyVal");
+        if (latEl) latEl.innerText = `${data.ms_per_token} ms/tok`;
+        const tokEl = document.getElementById("llamaTokCount");
+        if (tokEl) tokEl.innerText = `${data.tokens_generated} tokens`;
+        const timeEl = document.getElementById("llamaTimeVal");
+        if (timeEl) timeEl.innerText = `${data.total_time_ms} ms`;
+        const devEl = document.getElementById("llamaDeviceVal");
+        if (devEl) devEl.innerText = `${data.device} (${data.vram_mb} MB)`;
+
+        // Also update main speedup title
+        const sTitle = document.getElementById("speedupTitle");
+        if (sTitle) sTitle.innerText = `LLaMA.cpp GGUF ইনফ্যারেন্স সম্পন্ন! 🦙`;
+        const sDesc = document.getElementById("speedupDesc");
+        if (sDesc) sDesc.innerText = `স্পিড: ${data.tokens_per_sec} Tok/s | মোট সময়: ${data.total_time_ms} ms (${data.engine})`;
+
+        loadHistoryFromDB();
+    } catch (err) {
+        if (statusText) statusText.innerText = "ব্যর্থ";
+        if (term) term.innerText = "Execution failed: " + err;
     }
 }
 

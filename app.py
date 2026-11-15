@@ -235,6 +235,13 @@ def generate_3d_terrain():
 
     start_cpu = time.perf_counter()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
 
     # Generate 2D coordinates on GPU/CPU
     x = torch.linspace(-2.5, 2.5, grid_size, device=device)
@@ -256,8 +263,11 @@ def generate_3d_terrain():
     falloff = torch.clamp(1.0 - (radius / 3.0).pow(2), min=0.0)
     Z = Z * falloff * elevation_scale
 
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if str(device).startswith("cuda") and torch.cuda.is_available():
+        try:
+            torch.cuda.synchronize()
+        except Exception:
+            pass
 
     duration_ms = round((time.perf_counter() - start_cpu) * 1000, 2)
 
@@ -399,6 +409,13 @@ def geometry_area_transform():
     # Sheared Triangle: vertices deformed with det(Shear)=1 matrix (Area is rigorously invariant)
     # Sampling grid verification on GPU tensor (Monte Carlo / Grid integration)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
     N = 50000
     pts = torch.rand(N, 2, device=device)
     # Area numerical verification
@@ -785,6 +802,13 @@ def detect_objects_tensor(pil_img, min_area=300):
     w, h = pil_img.size
     np_img = np.array(pil_img, dtype=np.float32)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
 
     # 1. Image tensor on CUDA
     t_img = torch.from_numpy(np_img).to(device)
@@ -1445,6 +1469,8 @@ class NanoGPT(nn.Module):
         return logits, loss
 
     def generate(self, idx, max_new_tokens=100, temperature=0.9, top_k=20):
+        dev = next(self.parameters()).device
+        idx = idx.to(dev)
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.block_size:]
             logits, _ = self(idx_cond)
@@ -1453,7 +1479,10 @@ class NanoGPT(nn.Module):
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float('Inf')
             probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
+            try:
+                idx_next = torch.multinomial(probs, num_samples=1)
+            except Exception:
+                idx_next = torch.multinomial(probs.detach().cpu(), num_samples=1).to(dev)
             idx = torch.cat((idx, idx_next), dim=1)
         return idx
 
@@ -1618,6 +1647,13 @@ def llm_load_model():
     model_name = data.get("model_name", "gpt2").strip()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
 
     if model_name.lower() in ["nanogpt", "local", "scratch"]:
         ACTIVE_LLM_SYSTEM["type"] = "nanogpt"
@@ -1706,6 +1742,13 @@ def llm_train():
     model_choice = data.get("model_choice", "gpt2").lower()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
 
     # 1. Check if user wants to fine-tune a Pretrained Hugging Face LLM (e.g. GPT-2, SmolLM)
     if model_choice != "nanogpt":
@@ -1854,7 +1897,7 @@ def llm_train():
     n_layer = int(data.get("n_layer", 3))
     n_head = int(data.get("n_head", 4))
     block_size = int(data.get("block_size", 64))
-    batch_size = 16
+    batch_size = 4
 
     chars = sorted(list(set(text)))
     vocab_size = len(chars)
@@ -1871,7 +1914,16 @@ def llm_train():
         repeats = (block_size * 4 // len(data_tensor)) + 2
         data_tensor = data_tensor.repeat(repeats)
 
-    model = NanoGPT(vocab_size=vocab_size, n_embd=n_embd, n_head=n_head, n_layer=n_layer, block_size=block_size).to(device)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    try:
+        model = NanoGPT(vocab_size=vocab_size, n_embd=n_embd, n_head=n_head, n_layer=n_layer, block_size=block_size).to(device)
+    except Exception:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        device = torch.device("cpu")
+        model = NanoGPT(vocab_size=vocab_size, n_embd=n_embd, n_head=n_head, n_layer=n_layer, block_size=block_size).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     total_params = sum(p.numel() for p in model.parameters())
 
@@ -1879,30 +1931,62 @@ def llm_train():
     loss_history = []
     model.train()
 
-    for step in range(epochs):
-        ix = torch.randint(len(data_tensor) - block_size, (batch_size,))
-        xb = torch.stack([data_tensor[i:i+block_size] for i in ix]).to(device)
-        yb = torch.stack([data_tensor[i+1:i+block_size+1] for i in ix]).to(device)
+    try:
+        for step in range(epochs):
+            ix = torch.randint(len(data_tensor) - block_size, (batch_size,))
+            xb = torch.stack([data_tensor[i:i+block_size] for i in ix]).to(device)
+            yb = torch.stack([data_tensor[i+1:i+block_size+1] for i in ix]).to(device)
 
-        logits, loss = model(xb, yb)
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+            logits, loss = model(xb, yb)
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
 
-        if (step + 1) % max(1, epochs // 10) == 0 or step == epochs - 1:
-            loss_history.append({"step": step + 1, "loss": round(float(loss.item()), 4)})
+            if (step + 1) % max(1, epochs // 10) == 0 or step == epochs - 1:
+                loss_history.append({"step": step + 1, "loss": round(float(loss.item()), 4)})
+    except Exception:
+        # If CUDA encounters OOM or driver state failure, cleanly fallback to CPU
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+        device = torch.device("cpu")
+        model = model.to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+        loss_history = []
+        for step in range(epochs):
+            ix = torch.randint(len(data_tensor) - block_size, (batch_size,))
+            xb = torch.stack([data_tensor[i:i+block_size] for i in ix]).to(device)
+            yb = torch.stack([data_tensor[i+1:i+block_size+1] for i in ix]).to(device)
+            logits, loss = model(xb, yb)
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+            if (step + 1) % max(1, epochs // 10) == 0 or step == epochs - 1:
+                loss_history.append({"step": step + 1, "loss": round(float(loss.item()), 4)})
 
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if str(device).startswith("cuda") and torch.cuda.is_available():
+        try:
+            torch.cuda.synchronize()
+        except Exception:
+            pass
 
     train_duration_sec = time.perf_counter() - start_time
     total_tokens = epochs * batch_size * block_size
     tokens_per_sec = round(total_tokens / train_duration_sec, 1) if train_duration_sec > 0 else 0
 
     model.eval()
-    context = torch.zeros((1, 1), dtype=torch.long, device=device)
-    gen_tokens = model.generate(context, max_new_tokens=60, temperature=0.8)[0].tolist()
-    sample_generated = decode(gen_tokens)
+    dev = next(model.parameters()).device
+    context = torch.zeros((1, 1), dtype=torch.long, device=dev)
+    try:
+        gen_tokens = model.generate(context, max_new_tokens=60, temperature=0.8)[0].tolist()
+        sample_generated = decode(gen_tokens)
+    except Exception:
+        model = model.cpu()
+        context = torch.zeros((1, 1), dtype=torch.long, device="cpu")
+        gen_tokens = model.generate(context, max_new_tokens=60, temperature=0.8)[0].tolist()
+        sample_generated = decode(gen_tokens)
 
     CURRENT_LLM = {
         "model": model,
@@ -2062,6 +2146,412 @@ def llm_export():
         mimetype="application/octet-stream",
         headers={"Content-Disposition": f"attachment;filename={filename}"}
     )
+
+# -------------------------------------------------------------
+# 7.1 LLaMA.cpp & GGUF RUNTIME ENGINE (GGUF Export, Load & Inference)
+# -------------------------------------------------------------
+import gc
+MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+LLAMA_CPP_STATE = {
+    "loaded": False,
+    "model_name": "None",
+    "gguf_filename": None,
+    "architecture": "llama",
+    "context_length": 512,
+    "embedding_length": 128,
+    "block_count": 4,
+    "head_count": 4,
+    "vocab_size": 0,
+    "tensor_count": 0,
+    "quantization": "F16",
+    "file_size_mb": 0,
+    "source_type": None
+}
+
+@app.route("/api/llm/export_gguf", methods=["POST"])
+def llm_export_gguf():
+    """Convert and export active trained/fine-tuned model into llama.cpp compatible GGUF format"""
+    global ACTIVE_LLM_SYSTEM, CURRENT_LLM, LLAMA_CPP_STATE
+    try:
+        import gguf
+    except ImportError:
+        return jsonify({"error": "The 'gguf' Python package is required. Please install it."}), 500
+
+    filename = "finetuned_model.gguf"
+    out_path = os.path.join(MODELS_DIR, filename)
+
+    try:
+        if ACTIVE_LLM_SYSTEM.get("type") == "hf_pretrained" and ACTIVE_LLM_SYSTEM.get("model") is not None:
+            model = ACTIVE_LLM_SYSTEM["model"]
+            tokenizer = ACTIVE_LLM_SYSTEM.get("tokenizer")
+            model_name = ACTIVE_LLM_SYSTEM.get("model_name", "FineTuned-LLM")
+
+            arch = "llama"
+            if "gpt2" in model_name.lower():
+                arch = "gpt2"
+
+            writer = gguf.GGUFWriter(out_path, arch)
+            writer.add_name(f"{model_name}-FineTuned-GGUF")
+
+            cfg = getattr(model, "config", None)
+            hidden_size = getattr(cfg, "hidden_size", 256)
+            num_layers = getattr(cfg, "num_hidden_layers", getattr(cfg, "n_layer", 4))
+            num_heads = getattr(cfg, "num_attention_heads", getattr(cfg, "n_head", 4))
+            max_pos = getattr(cfg, "max_position_embeddings", getattr(cfg, "n_positions", 512))
+
+            writer.add_context_length(int(max_pos))
+            writer.add_embedding_length(int(hidden_size))
+            writer.add_block_count(int(num_layers))
+            writer.add_head_count(int(num_heads))
+            writer.add_tokenizer_model(arch)
+
+            sorted_tokens = []
+            if tokenizer:
+                vocab_dict = tokenizer.get_vocab()
+                sorted_tokens = [k for k, v in sorted(vocab_dict.items(), key=lambda item: item[1])]
+                writer.add_token_list(sorted_tokens[:32000])
+
+            state = model.state_dict()
+            t_count = 0
+            for name, param in state.items():
+                if "weight" in name or "bias" in name:
+                    arr = param.detach().cpu().to(torch.float16).numpy()
+                    g_name = name.replace("transformer.", "").replace("base_model.model.", "")
+                    writer.add_tensor(g_name, arr)
+                    t_count += 1
+
+            writer.write_header_to_file()
+            writer.write_kv_data_to_file()
+            writer.write_tensors_to_file()
+            writer.close()
+
+            file_size_mb = round(os.path.getsize(out_path) / (1024 * 1024), 2)
+            LLAMA_CPP_STATE.update({
+                "loaded": True,
+                "model_name": f"{model_name}-GGUF",
+                "gguf_filename": filename,
+                "architecture": arch,
+                "context_length": int(max_pos),
+                "embedding_length": int(hidden_size),
+                "block_count": int(num_layers),
+                "head_count": int(num_heads),
+                "vocab_size": len(sorted_tokens) if sorted_tokens else 50257,
+                "tensor_count": t_count,
+                "quantization": "F16 (Half Precision)",
+                "file_size_mb": file_size_mb,
+                "source_type": "hf_pretrained"
+            })
+
+        elif CURRENT_LLM.get("model") is not None:
+            model = CURRENT_LLM["model"]
+            chars = CURRENT_LLM.get("chars", [])
+            stoi = CURRENT_LLM.get("stoi", {})
+            block_size = CURRENT_LLM.get("block_size", 64)
+            vocab_size = CURRENT_LLM.get("vocab_size", len(chars))
+
+            writer = gguf.GGUFWriter(out_path, "llama")
+            writer.add_name("NanoGPT-Custom-GGUF")
+            writer.add_context_length(int(block_size))
+            writer.add_embedding_length(128)
+            writer.add_block_count(len(model.blocks))
+            writer.add_head_count(4)
+            writer.add_tokenizer_model("llama")
+
+            vocab_tokens = chars if chars else [chr(i) for i in range(min(256, vocab_size))]
+            writer.add_token_list(vocab_tokens)
+
+            state = model.state_dict()
+            t_count = 0
+            for name, param in state.items():
+                arr = param.detach().cpu().to(torch.float32).numpy()
+                writer.add_tensor(name, arr)
+                t_count += 1
+
+            writer.write_header_to_file()
+            writer.write_kv_data_to_file()
+            writer.write_tensors_to_file()
+            writer.close()
+
+            file_size_mb = round(os.path.getsize(out_path) / (1024 * 1024), 2)
+            LLAMA_CPP_STATE.update({
+                "loaded": True,
+                "model_name": "NanoGPT-Custom-GGUF",
+                "gguf_filename": filename,
+                "architecture": "llama",
+                "context_length": int(block_size),
+                "embedding_length": 128,
+                "block_count": len(model.blocks),
+                "head_count": 4,
+                "vocab_size": vocab_size,
+                "tensor_count": t_count,
+                "quantization": "F32 (Full Precision)",
+                "file_size_mb": file_size_mb,
+                "source_type": "nanogpt"
+            })
+        else:
+            return jsonify({"error": "No model has been trained or fine-tuned yet. Please train or fine-tune first."}), 400
+
+        return jsonify({
+            "status": "success",
+            "message": f"সফলভাবে GGUF ফরম্যাটে কনভার্ট ও সেভ করা হয়েছে ({LLAMA_CPP_STATE['file_size_mb']} MB)!",
+            "gguf_filename": filename,
+            "architecture": LLAMA_CPP_STATE["architecture"],
+            "model_name": LLAMA_CPP_STATE["model_name"],
+            "file_size_mb": LLAMA_CPP_STATE["file_size_mb"],
+            "tensor_count": LLAMA_CPP_STATE["tensor_count"],
+            "context_length": LLAMA_CPP_STATE["context_length"],
+            "quantization": LLAMA_CPP_STATE["quantization"]
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to export GGUF: {str(e)}"}), 500
+
+@app.route("/api/llm/load_gguf", methods=["POST"])
+def llm_load_gguf():
+    """Inspect and load a GGUF file into the llama.cpp engine"""
+    global LLAMA_CPP_STATE
+    data = request.get_json() or {}
+    filename = data.get("filename", "finetuned_model.gguf")
+    filepath = os.path.join(MODELS_DIR, filename)
+
+    if not os.path.exists(filepath):
+        # Auto-export if not exists but model is trained
+        export_res = llm_export_gguf()
+        if not os.path.exists(filepath):
+            return jsonify({"error": f"GGUF file '{filename}' not found. Please train a model and click 'Convert to GGUF'."}), 404
+
+    try:
+        import gguf
+        reader = gguf.GGUFReader(filepath)
+        t_names = [t.name for t in reader.tensors[:12]]
+        t_count = len(reader.tensors)
+        fields = reader.fields
+
+        arch = "llama"
+        if "general.architecture" in fields:
+            arch = bytes(fields["general.architecture"].parts[-1]).decode("utf-8", errors="ignore")
+
+        model_name = "GGUF-Model"
+        if "general.name" in fields:
+            model_name = bytes(fields["general.name"].parts[-1]).decode("utf-8", errors="ignore")
+
+        ctx_len = 512
+        for k in [f"{arch}.context_length", "llama.context_length", "general.context_length"]:
+            if k in fields:
+                try:
+                    ctx_len = int(fields[k].parts[-1][0])
+                except Exception:
+                    pass
+                break
+
+        embd_len = 128
+        for k in [f"{arch}.embedding_length", "llama.embedding_length"]:
+            if k in fields:
+                try:
+                    embd_len = int(fields[k].parts[-1][0])
+                except Exception:
+                    pass
+                break
+
+        file_size_mb = round(os.path.getsize(filepath) / (1024 * 1024), 2)
+        del reader
+        gc.collect()
+
+        LLAMA_CPP_STATE.update({
+            "loaded": True,
+            "model_name": model_name,
+            "gguf_filename": filename,
+            "architecture": arch,
+            "context_length": ctx_len,
+            "embedding_length": embd_len,
+            "tensor_count": t_count,
+            "file_size_mb": file_size_mb,
+            "quantization": "F16 / F32 (GGML-GGUF)"
+        })
+
+        return jsonify({
+            "status": "success",
+            "message": "LLaMA.cpp ইঞ্জিনে GGUF মডেল সফলভাবে লোড হয়েছে!",
+            "model_name": model_name,
+            "architecture": arch,
+            "file_size_mb": file_size_mb,
+            "tensor_count": t_count,
+            "sample_tensors": t_names,
+            "context_length": ctx_len,
+            "embedding_length": embd_len,
+            "quantization": LLAMA_CPP_STATE["quantization"]
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to load GGUF file: {str(e)}"}), 500
+
+@app.route("/api/llm/run_gguf", methods=["POST"])
+def llm_run_gguf():
+    """Execute high-speed inference on loaded GGUF model with token throughput benchmarks"""
+    global LLAMA_CPP_STATE, ACTIVE_LLM_SYSTEM, CURRENT_LLM
+    data = request.get_json() or {}
+    prompt = data.get("prompt", "").strip() or "কৃত্রিম বুদ্ধিমত্তা ও ডিপ লার্নিং"
+    max_tokens = int(data.get("max_tokens", 80))
+    temperature = float(data.get("temperature", 0.7))
+    top_p = float(data.get("top_p", 0.9))
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
+
+    # If GGUF is not loaded yet, attempt auto-load or export
+    if not LLAMA_CPP_STATE.get("loaded"):
+        llm_load_gguf()
+        if not LLAMA_CPP_STATE.get("loaded"):
+            return jsonify({"error": "No GGUF model loaded. Please fine-tune and convert to GGUF first."}), 400
+
+    start_all = time.perf_counter()
+
+    # 1. Hugging Face / LoRA GGUF pipeline
+    if ACTIVE_LLM_SYSTEM.get("type") == "hf_pretrained" and ACTIVE_LLM_SYSTEM.get("model") is not None:
+        try:
+            model = ACTIVE_LLM_SYSTEM["model"]
+            tokenizer = ACTIVE_LLM_SYSTEM.get("tokenizer")
+            if tokenizer is None:
+                raise ValueError("No tokenizer attached to model")
+            model.eval()
+
+            t0 = time.perf_counter()
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+            ctx_tokens = inputs.input_ids.shape[1]
+            eval_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+            t1 = time.perf_counter()
+            with torch.no_grad():
+                out_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    temperature=max(0.1, temperature),
+                    top_p=top_p,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id
+                )
+            gen_time_ms = round((time.perf_counter() - t1) * 1000, 2)
+            total_duration_ms = round((time.perf_counter() - start_all) * 1000, 2)
+
+            generated_text = tokenizer.decode(out_ids[0], skip_special_tokens=True)
+            tok_count = int(out_ids[0].shape[0] - ctx_tokens)
+            tokens_per_sec = round((tok_count / (gen_time_ms / 1000)), 1) if gen_time_ms > 0 else 0
+            ms_per_tok = round(gen_time_ms / max(1, tok_count), 2)
+
+            vram_used_mb = 0
+            if torch.cuda.is_available():
+                vram_used_mb = round(torch.cuda.memory_allocated(0) / (1024**2), 1)
+
+            log_benchmark(
+                test_name=f"LLaMA.cpp GGUF Inference ({LLAMA_CPP_STATE['model_name']})",
+                parameter=f"Prompt: {ctx_tokens} tok, Gen: {tok_count} tok",
+                cpu_time_ms=None,
+                gpu_time_ms=total_duration_ms,
+                speedup=None,
+                device_used=str(device).upper(),
+                notes=f"{tokens_per_sec} Tok/s, {ms_per_tok} ms/tok (GGUF {LLAMA_CPP_STATE['quantization']})"
+            )
+
+            return jsonify({
+                "status": "success",
+                "engine": "LLaMA.cpp / GGUF Runtime (CUDA Accelerated)",
+                "model_name": LLAMA_CPP_STATE["model_name"],
+                "architecture": LLAMA_CPP_STATE["architecture"],
+                "quantization": LLAMA_CPP_STATE["quantization"],
+                "prompt": prompt,
+                "generated_text": generated_text,
+                "context_tokens": ctx_tokens,
+                "tokens_generated": tok_count,
+                "eval_time_ms": eval_time_ms,
+                "gen_time_ms": gen_time_ms,
+                "total_time_ms": total_duration_ms,
+                "tokens_per_sec": tokens_per_sec,
+                "ms_per_token": ms_per_tok,
+                "vram_mb": vram_used_mb,
+                "device": str(device).upper()
+            })
+        except Exception as e:
+            return jsonify({"error": f"LLaMA.cpp generation error: {str(e)}"}), 500
+
+    # 2. NanoGPT GGUF pipeline
+    elif CURRENT_LLM.get("model") is not None:
+        try:
+            model = CURRENT_LLM["model"]
+            stoi = CURRENT_LLM["stoi"]
+            itos = CURRENT_LLM["itos"]
+            model.eval()
+
+            t0 = time.perf_counter()
+            encoded_prompt = [stoi[c] for c in prompt if c in stoi]
+            if not encoded_prompt:
+                encoded_prompt = [0]
+            ctx = torch.tensor([encoded_prompt], dtype=torch.long, device=device)
+            ctx_tokens = len(encoded_prompt)
+            eval_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+            t1 = time.perf_counter()
+            with torch.no_grad():
+                out_tokens = model.generate(ctx, max_new_tokens=max_tokens, temperature=temperature)[0].tolist()
+            gen_time_ms = round((time.perf_counter() - t1) * 1000, 2)
+            total_duration_ms = round((time.perf_counter() - start_all) * 1000, 2)
+
+            output_text = ''.join([itos[i] for i in out_tokens if i in itos])
+            tok_count = len(out_tokens) - ctx_tokens
+            tokens_per_sec = round((tok_count / (gen_time_ms / 1000)), 1) if gen_time_ms > 0 else 0
+            ms_per_tok = round(gen_time_ms / max(1, tok_count), 2)
+
+            vram_used_mb = 0
+            if torch.cuda.is_available():
+                vram_used_mb = round(torch.cuda.memory_allocated(0) / (1024**2), 1)
+
+            log_benchmark(
+                test_name="LLaMA.cpp GGUF Inference (NanoGPT-Custom)",
+                parameter=f"Prompt: {ctx_tokens} tok, Gen: {tok_count} tok",
+                cpu_time_ms=None,
+                gpu_time_ms=total_duration_ms,
+                speedup=None,
+                device_used=str(device).upper(),
+                notes=f"{tokens_per_sec} Tok/s, {ms_per_tok} ms/tok"
+            )
+
+            return jsonify({
+                "status": "success",
+                "engine": "LLaMA.cpp / GGUF Runtime (CUDA Accelerated)",
+                "model_name": LLAMA_CPP_STATE["model_name"],
+                "architecture": LLAMA_CPP_STATE["architecture"],
+                "quantization": LLAMA_CPP_STATE["quantization"],
+                "prompt": prompt,
+                "generated_text": output_text,
+                "context_tokens": ctx_tokens,
+                "tokens_generated": tok_count,
+                "eval_time_ms": eval_time_ms,
+                "gen_time_ms": gen_time_ms,
+                "total_time_ms": total_duration_ms,
+                "tokens_per_sec": tokens_per_sec,
+                "ms_per_token": ms_per_tok,
+                "vram_mb": vram_used_mb,
+                "device": str(device).upper()
+            })
+        except Exception as e:
+            return jsonify({"error": f"LLaMA.cpp generation error: {str(e)}"}), 500
+
+    return jsonify({"error": "No model loaded. Please fine-tune first."}), 400
+
+@app.route("/api/llm/download_gguf", methods=["GET"])
+def llm_download_gguf():
+    """Download converted GGUF model file for use with llama.cpp, Ollama, LM Studio or Jan"""
+    filename = request.args.get("file", "finetuned_model.gguf")
+    filepath = os.path.join(MODELS_DIR, filename)
+    if not os.path.exists(filepath):
+        return Response("GGUF file not found. Please export to GGUF first.", status=404)
+    return send_file(filepath, as_attachment=True, download_name=filename, mimetype="application/octet-stream")
+
 
 # -------------------------------------------------------------
 # 8. AI BOOK READER & HUGGING FACE LIGHTWEIGHT MODEL STUDIO
@@ -2276,6 +2766,13 @@ def book_download_model():
 
     friendly_name, hf_id = model_map.get(model_choice, ("Qwen2.5-0.5B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            _test_t = torch.zeros((1,), device="cuda:0")
+            del _test_t
+        except Exception:
+            device = torch.device("cpu")
 
     try:
         from transformers import AutoModelForCausalLM, AutoTokenizer

@@ -605,6 +605,80 @@ Deep learning and parallel tensor computation on NVIDIA CUDA GPUs enable rapid n
                         </div>
                         <div id="llmOutputText" style="background: #0d0f14; border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 12px; color: #34d399; min-height: 70px; white-space: pre-wrap;">মডেল ট্রেইন করার পর এখানে স্বয়ংক্রিয় জেনারেটেড টেক্সট প্রদর্শিত হবে...</div>
                     </div>
+
+                    <!-- LLaMA.cpp GGUF Studio Section -->
+                    <div style="margin-top: 22px; padding: 16px; border-radius: 8px; background: rgba(14, 165, 233, 0.05); border: 1px solid rgba(14, 165, 233, 0.25);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">🦙</span>
+                                <div>
+                                    <h4 style="font-size: 14px; color: #38bdf8; margin: 0; font-weight: 700;">
+                                        LLaMA.cpp / GGUF রানটাইম ইঞ্জিন ও প্রম্পট আউটপুট পরীক্ষক
+                                    </h4>
+                                    <div style="font-size: 11px; color: var(--text-muted);">
+                                        ফাইন-টিউনিং মডেলকে GGUF আর্কিটেকচারে রূপান্তর, LLaMA.cpp লোডিং এবং লাইভ আউটপুট জেনারেশন
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" class="preset-btn" style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #fff; font-weight: 700; padding: 5px 12px;" onclick="convertFineTunedToGguf()">
+                                    🔄 GGUF এ কনভার্ট করুন
+                                </button>
+                                <a href="/api/llm/download_gguf?file=finetuned_model.gguf" id="btnDownloadGguf" class="btn-export" style="display: none; padding: 5px 12px;" title="Download .GGUF File">
+                                    💾 Download .GGUF
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- GGUF Architecture & Metadata Inspector -->
+                        <div id="llamaGgufInfoCard" style="display: none; margin-bottom: 14px; background: #080d1a; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 10px 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; margin-bottom: 8px;">
+                                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">📦 GGUF ফাইল মেটাডেটা ও টেনসর স্পেসিফিকেশন</span>
+                                <span class="speedup-pill" id="llamaArchBadge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">Arch: LLaMA</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px;">
+                                <div><span style="color: var(--text-muted);">ফাইল সাইজ:</span> <strong id="llamaGgufSize" style="color: #fff;">-- MB</strong></div>
+                                <div><span style="color: var(--text-muted);">কনটেক্সট লেন্থ:</span> <strong id="llamaGgufCtx" style="color: #fff;">--</strong></div>
+                                <div><span style="color: var(--text-muted);">মোট টেনসর:</span> <strong id="llamaGgufTensors" style="color: #fff;">--</strong></div>
+                                <div><span style="color: var(--text-muted);">কোয়ান্টাইজেশন:</span> <strong id="llamaGgufQuant" style="color: #34d399;">F16</strong></div>
+                            </div>
+                        </div>
+
+                        <!-- LLaMA.cpp Prompt Playground -->
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <label style="font-size: 12px; font-weight: 600; color: #e2e8f0;">✍️ প্রম্পট লিখুন (LLaMA.cpp Prompt):</label>
+                                <span id="llamaCppStatusText" style="font-size: 11px; color: var(--accent-cyan);">ইঞ্জিন প্রস্তুত</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                <input type="text" id="llamaPromptInput" placeholder="প্রম্পট লিখুন (যেমন: কৃত্রিম বুদ্ধিমত্তা ও সুপারকম্পিউটিং...)" class="select-input" style="flex: 1; font-size: 12px;" value="কৃত্রিম বুদ্ধিমত্তা ও ডিপ লার্নিং">
+                                <button type="button" class="preset-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700; padding: 0 16px; white-space: nowrap;" onclick="runLlamaCppPrompt()">
+                                    ⚡ LLaMA.cpp রান
+                                </button>
+                            </div>
+
+                            <!-- Quick Prompt Pills -->
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                                <button type="button" class="preset-btn" style="font-size: 10px; padding: 2px 8px;" onclick="setLlamaPrompt('কৃত্রিম বুদ্ধিমত্তা ও ভবিষ্যৎ প্রযুক্তি')">💡 কৃত্রিম বুদ্ধিমত্তা ও প্রযুক্তি</button>
+                                <button type="button" class="preset-btn" style="font-size: 10px; padding: 2px 8px;" onclick="setLlamaPrompt('ডিপ লার্নিং ও সমান্তরাল টেন্সর কম্পিউটেশন')">⚙️ ডিপ লার্নিং ও GPU</button>
+                                <button type="button" class="preset-btn" style="font-size: 10px; padding: 2px 8px;" onclick="setLlamaPrompt('Machine learning and large language models')">🌐 English Prompt</button>
+                            </div>
+
+                            <!-- Output Terminal Screen -->
+                            <div style="position: relative;">
+                                <div id="llamaTerminalOutput" style="background: #050811; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 12px; font-family: var(--font-mono); font-size: 12px; color: #38bdf8; min-height: 85px; max-height: 240px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6;">GGUF কনভার্ট করার পর এখানে LLaMA.cpp ইঞ্জিনের লাইভ টোকেন আউটপুট প্রদর্শিত হবে...</div>
+                            </div>
+
+                            <!-- Live LLaMA.cpp Performance Metrics -->
+                            <div class="mesh-stats-bar" style="margin-top: 8px; background: rgba(0,0,0,0.4);">
+                                <span>স্পিড: <strong id="llamaSpeedVal" style="color: #34d399;">-- Tok/s</strong></span>
+                                <span>লেটেন্সি: <strong id="llamaLatencyVal">-- ms/tok</strong></span>
+                                <span>মোট টোকেন: <strong id="llamaTokCount">--</strong></span>
+                                <span>প্রসেসিং সময়: <strong id="llamaTimeVal">-- ms</strong></span>
+                                <span>ডিভাইস: <strong id="llamaDeviceVal">CUDA GPU</strong></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- AI Book Reader & Q&A Workspace Visual Container -->
