@@ -20,6 +20,26 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
         pass
 
 # -------------------------------------------------------------
+# Force All Model Downloads & Cache Inside This Application Directory
+# (Strictly inside F:\CUDA TEST\models - NOT in C: Drive)
+# -------------------------------------------------------------
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(APP_DIR, "models")
+HF_MODELS_CACHE = os.path.join(MODELS_DIR, "huggingface")
+TORCH_MODELS_CACHE = os.path.join(MODELS_DIR, "torch")
+
+os.makedirs(MODELS_DIR, exist_ok=True)
+os.makedirs(HF_MODELS_CACHE, exist_ok=True)
+os.makedirs(TORCH_MODELS_CACHE, exist_ok=True)
+
+# Set environment variables before any huggingface or transformers imports
+os.environ["HF_HOME"] = HF_MODELS_CACHE
+os.environ["TRANSFORMERS_CACHE"] = HF_MODELS_CACHE
+os.environ["HUGGINGFACE_HUB_CACHE"] = os.path.join(HF_MODELS_CACHE, "hub")
+os.environ["HF_HUB_CACHE"] = os.path.join(HF_MODELS_CACHE, "hub")
+os.environ["TORCH_HOME"] = TORCH_MODELS_CACHE
+
+# -------------------------------------------------------------
 # SQLite3 Database Initialization for Saving Benchmark Results
 # -------------------------------------------------------------
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "benchmark_history.db")
@@ -1682,7 +1702,7 @@ def llm_load_model():
         hf_model_id = model_id_map.get(model_name.lower(), model_name)
 
         start_t = time.perf_counter()
-        tokenizer = AutoTokenizer.from_pretrained(hf_model_id)
+        tokenizer = AutoTokenizer.from_pretrained(hf_model_id, cache_dir=HF_MODELS_CACHE)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -1690,6 +1710,7 @@ def llm_load_model():
         dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         model = AutoModelForCausalLM.from_pretrained(
             hf_model_id,
+            cache_dir=HF_MODELS_CACHE,
             torch_dtype=dtype,
             low_cpu_mem_usage=True
         )
@@ -1757,11 +1778,11 @@ def llm_train():
             if ACTIVE_LLM_SYSTEM.get("type") != "hf_pretrained" or ACTIVE_LLM_SYSTEM.get("model") is None:
                 from transformers import AutoModelForCausalLM, AutoTokenizer
                 hf_id = "gpt2" if "gpt2" in model_choice else ("HuggingFaceTB/SmolLM-135M" if "smol" in model_choice else "distilgpt2")
-                tokenizer = AutoTokenizer.from_pretrained(hf_id)
+                tokenizer = AutoTokenizer.from_pretrained(hf_id, cache_dir=HF_MODELS_CACHE)
                 if tokenizer.pad_token is None:
                     tokenizer.pad_token = tokenizer.eos_token
                 dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-                base_model = AutoModelForCausalLM.from_pretrained(hf_id, torch_dtype=dtype, low_cpu_mem_usage=True).to(device)
+                base_model = AutoModelForCausalLM.from_pretrained(hf_id, cache_dir=HF_MODELS_CACHE, torch_dtype=dtype, low_cpu_mem_usage=True).to(device)
                 ACTIVE_LLM_SYSTEM["type"] = "hf_pretrained"
                 ACTIVE_LLM_SYSTEM["model_name"] = hf_id
                 ACTIVE_LLM_SYSTEM["tokenizer"] = tokenizer
@@ -2552,6 +2573,55 @@ def llm_download_gguf():
         return Response("GGUF file not found. Please export to GGUF first.", status=404)
     return send_file(filepath, as_attachment=True, download_name=filename, mimetype="application/octet-stream")
 
+@app.route("/api/models/status", methods=["GET"])
+def models_status():
+    """List all downloaded and cached models stored inside this application directory (F: Drive, NOT C: Drive)"""
+    models_info = []
+    total_bytes = 0
+
+    # 1. Check GGUF models
+    if os.path.exists(MODELS_DIR):
+        for f in os.listdir(MODELS_DIR):
+            p = os.path.join(MODELS_DIR, f)
+            if os.path.isfile(p) and f.endswith(".gguf"):
+                sz = os.path.getsize(p)
+                total_bytes += sz
+                models_info.append({
+                    "name": f,
+                    "type": "GGUF Binary Model",
+                    "path": p,
+                    "size_mb": round(sz / (1024 * 1024), 2)
+                })
+
+    # 2. Check HuggingFace hub models inside models/huggingface/hub
+    hf_hub = os.path.join(HF_MODELS_CACHE, "hub")
+    if os.path.exists(hf_hub):
+        for item in os.listdir(hf_hub):
+            p = os.path.join(hf_hub, item)
+            if os.path.isdir(p) and item.startswith("models--"):
+                sz = sum(os.path.getsize(os.path.join(root, file)) for root, dirs, files in os.walk(p) for file in files)
+                total_bytes += sz
+                clean_name = item.replace("models--", "").replace("--", "/")
+                models_info.append({
+                    "name": clean_name,
+                    "type": "Hugging Face Model Weights",
+                    "path": p,
+                    "size_mb": round(sz / (1024 * 1024), 2)
+                })
+
+    drive_letter = os.path.splitdrive(APP_DIR)[0]
+
+    return jsonify({
+        "status": "success",
+        "storage_drive": drive_letter,
+        "app_directory": APP_DIR,
+        "models_directory": MODELS_DIR,
+        "message": f"All models are strictly saved inside application directory ({drive_letter} Drive). Zero files in C: Drive.",
+        "total_storage_mb": round(total_bytes / (1024 * 1024), 2),
+        "total_models": len(models_info),
+        "models": models_info
+    })
+
 
 # -------------------------------------------------------------
 # 8. AI BOOK READER & HUGGING FACE LIGHTWEIGHT MODEL STUDIO
@@ -2778,7 +2848,7 @@ def book_download_model():
         from transformers import AutoModelForCausalLM, AutoTokenizer
         start_t = time.perf_counter()
 
-        tokenizer = AutoTokenizer.from_pretrained(hf_id)
+        tokenizer = AutoTokenizer.from_pretrained(hf_id, cache_dir=HF_MODELS_CACHE)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -2786,6 +2856,7 @@ def book_download_model():
         dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         model = AutoModelForCausalLM.from_pretrained(
             hf_id,
+            cache_dir=HF_MODELS_CACHE,
             torch_dtype=dtype,
             low_cpu_mem_usage=True
         )

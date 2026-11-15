@@ -1,0 +1,73 @@
+# =============================================================
+# 🧠 AI / LLM Models & Heavy Weights (Git Ignored)
+# =============================================================
+# Hugging Face cache, model snapshots, and binary blobs
+models/huggingface/
+models/torch/
+hf_cache/
+.cache/
+huggingface/
+
+# Large Model Weight Formats (>100MB exceeds GitHub limits)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.tflite
+*.msgpack
+*.arrow
+
+# Large GGUF / GGML Quantized Models
+*.gguf
+*.ggml
+# Exception: allow lightweight fine-tuned demo GGUF & doc
+!models/finetuned_model.gguf
+
+# Model Training Checkpoints, LoRA Dumps & Tensorboard Runs
+checkpoints/
+checkpoints_*/
+runs/
+lora_weights/
+output/
+wandb/
+lightning_logs/
+
+# Preserve Models Directory Structure & Documentation
+!models/
+!models/README.md
+
+# =============================================================
+# 🐍 Python & Virtual Environments
+# =============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# =============================================================
+# 💾 SQLite Temporary Files & Logs
+# =============================================================
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+# =============================================================
+# 🖥️ OS & IDE Configuration Files
+# =============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store

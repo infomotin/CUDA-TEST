@@ -1,4 +1,10 @@
 flask>=3.0.0
 torch
-pillow
-pypdf
+torchvision
+transformers>=4.40.0
+peft>=0.10.0
+accelerate>=0.28.0
+gguf>=0.14.0
+pypdf>=4.0.0
+pillow>=10.0.0
+numpy

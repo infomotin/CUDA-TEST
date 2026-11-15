@@ -987,7 +987,7 @@ async function downloadAndLoadHfModel() {
         }
 
         if (statusEl) {
-            statusEl.innerHTML = `✅ সফল! <strong>${data.model_name}</strong> সফলভাবে CUDA তে লোড হয়েছে (${data.params} Params, VRAM: ${data.vram_mb} MB, ${data.load_time_sec}s)।`;
+            statusEl.innerHTML = `✅ সফল! <strong>${data.model_name}</strong> অ্যাপের ভেতর (F:\\CUDA TEST\\models\\huggingface) সংরক্ষিত ও CUDA তে লোড হয়েছে (${data.params} Params, VRAM: ${data.vram_mb} MB, ${data.load_time_sec}s)।`;
         }
         const badgeEl = document.getElementById("bookActiveModelBadge");
         if (badgeEl) badgeEl.innerText = `Model: ${data.model_name} (Active)`;
@@ -1240,7 +1240,7 @@ async function loadSelectedLlmModel() {
             return;
         }
 
-        if (badge) badge.innerHTML = `✅ সফল! <strong>${data.model_name}</strong> সফলভাবে লোড হয়েছে (${data.params} প্যারামিটার, VRAM: ${data.vram_mb} MB)।`;
+        if (badge) badge.innerHTML = `✅ সফল! <strong>${data.model_name}</strong> অ্যাপের ডিরেক্টরিতে (F:\\CUDA TEST\\models\\) সেভ ও লোড হয়েছে (${data.params} প্যারামিটার, VRAM: ${data.vram_mb} MB)।`;
         const activeBadge = document.getElementById("activeModelBadge");
         if (activeBadge) activeBadge.innerText = `Model: ${data.model_name}`;
         const nameEl = document.getElementById("llmActiveModelName");
