@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="bn">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GTX 1650 CUDA Vision MVC Studio</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+
+<body>
+  <header>
+    <div class="brand">⚡ GTX 1650 CUDA Vision MVC Studio</div>
+    <div class="gpu-badge" id="gpuInfo">GPU স্ট্যাটাস লোড হচ্ছে...</div>
+  </header>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <div class="container">
+    <div>
+      <div class="card">
+        <h3>১. ডিসিশন ইঞ্জিন ও ইনপুট</h3>
+        <div class="tabs">
+          <button class="tab-btn active" id="modeImageBtn">🖼️ Image / Cam</button>
+          <button class="tab-btn" id="modeVideoBtn">🎬 Video</button>
+        </div>
+
+        <div class="field">
+          <label>মডেল নির্বাচন করুন (./models/torch_hub)</label>
+          <select id="modelSelect">
+            <option value="fasterrcnn">Faster R-CNN MobileNetV3 (Balanced)</option>
+            <option value="ssdlite">SSDLite MobileNetV3 (Fast)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Confidence Threshold: <span id="threshVal">0.50</span></label>
+          <input type="range" id="threshInput" min="0.1" max="0.95" step="0.05" value="0.5" />
+        </div>
+
+        <div class="field">
+          <label>Max Image/Frame Side (4 GB VRAM Guard): <span id="sideVal">1024</span>px</label>
+          <input type="range" id="sideInput" min="320" max="1600" step="64" value="1024" />
+        </div>
+
+        <div id="videoOptions" style="display:none;">
+          <div class="field">
+            <label>Frame Stride: <span id="strideVal">3</span></label>
+            <input type="range" id="strideInput" min="1" max="15" step="1" value="3" />
+          </div>
+          <div class="field">
+            <label>Max Frames Limit: <span id="maxFramesVal">150</span></label>
+            <input type="range" id="maxFramesInput" min="20" max="500" step="20" value="150" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>নির্দিষ্ট অবজেক্ট নাম ফিল্টার (কমা দিয়ে — যেমন: person, car)</label>
+          <input type="text" id="targetLabelsInput" placeholder="সব অবজেক্টের জন্য খালি রাখুন" />
+        </div>
+
+        <div class="field">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label style="margin:0;">Classification ক্যাটাগরি ডিসিশন</label>
+            <button class="btn-secondary btn-sm" id="clearClassBtn" type="button">Clear</button>
+          </div>
+          <div class="class-checks" id="classChecks"></div>
+        </div>
+
+        <div class="field">
+          <label class="chk-item">
+            <input type="checkbox" id="humanAttrChk" checked />
+            Human (`person`) শনাক্ত হলে Gender ও Age অনুমান করো
+          </label>
+          <label class="chk-item" style="margin-top:4px;">
+            <input type="checkbox" id="saveDbChk" checked />
+            রেজাল্ট SQLite ডেটাবেজে (./data/vision_results.db) সংরক্ষণ করো
+          </label>
+          <label class="chk-item" style="margin-top:4px;">
+            <input type="checkbox" id="saveDownloadChk" checked />
+            আউটপুট ./downloads ফোল্ডারে সংরক্ষণ করো
+          </label>
+        </div>
+
+        <div id="imageInputs">
+          <div class="field">
+            <label>ছবি আপলোড করুন (JPG, PNG, WEBP)</label>
+            <input type="file" id="fileInput" accept="image/*" />
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" id="detectImageBtn">🔍 Run Image Detection</button>
+            <button class="btn-secondary" id="camBtn">📷 Cam</button>
+            <button class="btn-secondary" id="snapBtn" disabled>📸 Snap</button>
+          </div>
+        </div>
+
+        <div id="videoInputs" style="display:none;">
+          <div class="field">
+            <label>ভিডিও ফাইল আপলোড করুন (MP4, AVI, MOV)</label>
+            <input type="file" id="videoInput" accept="video/*" />
+          </div>
+          <div class="field">
+            <label>অথবা YouTube URL দিন (অ্যাপের ভেতরে প্লে ও Live ডিটেক্ট)</label>
+            <input type="text" id="youtubeUrlInput" placeholder="https://www.youtube.com/watch?v=..." />
+          </div>
+          <div class="btn-row">
+            <button class="btn-secondary" id="playYtBtn" type="button">▶ Play YouTube</button>
+            <button class="btn-primary" id="detectVideoBtn" type="button">🎬 Run Video / Live Detect</button>
+          </div>
+        </div>
+
+        <div class="status-msg" id="statusMsg"></div>
+      </div>
+
+      <div class="card">
+        <h3>২. Smart Alert & Notification Rules</h3>
+        <label class="chk-item">
+          <input type="checkbox" id="alertOnDetChk" checked />
+          অবজেক্ট ডিটেক্ট হলে Alert & Notification পাঠাও
+        </label>
+        <label class="chk-item" style="margin-top:5px;">
+          <input type="checkbox" id="alertNoDetVideoChk" checked />
+          Running Video-তে ডিটেকশন না হলে ("No Alert" Rule) অ্যালার্ট দাও
+        </label>
+        <div class="field" style="margin-top:8px;">
+          <label>Alert Watch Labels (ঐচ্ছিক, কমা দিয়ে — যেমন: person, truck)</label>
+          <input type="text" id="watchLabelsInput" placeholder="খালি থাকলে সব ডিটেক্টেড অবজেক্টে অ্যালার্ট" />
+        </div>
+        <div class="field">
+          <label>External Webhook URL (ঐচ্ছিক)</label>
+          <input type="text" id="webhookInput" placeholder="https://example.com/webhook" />
+        </div>
+        <button class="btn-secondary btn-sm" id="saveAlertCfgBtn">Save Alert Rules</button>
+      </div>
+
+      <div class="card">
+        <h3>৩. Model, Library & Download Controller</h3>
+        <div class="field">
+          <label>মডেল ডাউনলোড / লোড (./models)</label>
+          <div class="btn-row">
+            <button class="btn-secondary btn-sm" id="dlFasterBtn">Faster R-CNN</button>
+            <button class="btn-secondary btn-sm" id="dlSsdBtn">SSDLite</button>
+            <button class="btn-secondary btn-sm" id="dlAllBtn">All Models</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>লাইব্রেরি ইনস্টল (pip)</label>
+          <div class="btn-row">
+            <select id="pkgSelect" style="flex:1;">
+              <option value="opencv-python">opencv-python (Video)</option>
+              <option value="deepface">deepface (Age/Gender)</option>
+              <option value="tf-keras">tf-keras (Backend)</option>
+              <option value="scipy">scipy</option>
+            </select>
+            <button class="btn-secondary btn-sm" id="installPkgBtn">Install</button>
+          </div>
+        </div>
+        <div class="field">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label style="margin:0;">./downloads ফাইলসমূহ</label>
+            <div>
+              <button class="btn-secondary btn-sm" id="saveJsonBtn">Save JSON</button>
+              <button class="btn-secondary btn-sm" id="refreshDlBtn">Refresh</button>
+            </div>
+          </div>
+          <div class="list-box" id="downloadsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3>৪. আউটপুট, ক্লাসিফিকেশন, রঙ ও CUDA পারফরম্যান্স</h3>
+        <div class="preview-box" id="previewBox">
+          <span style="color: var(--muted);">ছবি বা ভিডিও নির্বাচন করে ডিটেকশন শুরু করুন</span>
+        </div>
+
+        <div class="stats">
+          <div class="stat-item">
+            <div class="stat-label">GPU Inference</div>
+            <div class="stat-val" id="gpuTime">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">H2D / Mode</div>
+            <div class="stat-val" id="h2dTime">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Peak VRAM</div>
+            <div class="stat-val" id="peakVram">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total Detections</div>
+            <div class="stat-val" id="objCount">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Unique Objects</div>
+            <div class="stat-val" id="uniqueCount">-</div>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-box">
+            <div class="summary-title">Unique Objects & Count</div>
+            <div class="badge-wrap" id="uniqueBadges"><span class="sub-txt">কোনো ডেটা নেই</span></div>
+          </div>
+          <div class="summary-box">
+            <div class="summary-title">Object Classification</div>
+            <div class="badge-wrap" id="classBadges"><span class="sub-txt">কোনো ডেটা নেই</span></div>
+          </div>
+          <div class="summary-box">
+            <div class="summary-title">Detected Colors</div>
+            <div class="badge-wrap" id="colorBadges"><span class="sub-txt">কোনো ডেটা নেই</span></div>
+          </div>
+          <div class="summary-box">
+            <div class="summary-title">Human Gender Summary</div>
+            <div class="badge-wrap" id="genderBadges"><span class="sub-txt">কোনো Human ডেটা নেই</span></div>
+          </div>
+        </div>
+
+        <div class="list-box" id="detList"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">৫. SQLite Saved Results History (./data/vision_results.db)</h3>
+          <button class="btn-secondary btn-sm" id="refreshDbBtn">Refresh DB</button>
+        </div>
+        <div class="list-box" id="dbResultsList"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">৬. Live Notification & Alert Center</h3>
+          <button class="btn-secondary btn-sm" id="clearNotifBtn">Clear Log</button>
+        </div>
+        <div class="list-box" id="notifList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+
+</html>

@@ -6,15 +6,20 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
-# torch এবং torchvision ইম্পোর্ট করার আগেই TORCH_HOME অ্যাপ্লিকেশন ফোল্ডারে সেট করা
+# সব মডেল/ক্যাশ অ্যাপ্লিকেশন রানিং ফোল্ডারের ভেতরে রাখার জন্য ENV সেটআপ
+# (torch, torchvision এবং deepface ইম্পোর্ট করার আগেই সেট করতে হবে)
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-LOCAL_MODEL_DIR = BASE_DIR / "models" / "torch_hub"
-LOCAL_MODEL_DIR.mkdir(parents=True, exist_ok=True)
-os.environ["TORCH_HOME"] = str(LOCAL_MODEL_DIR)
+LOCAL_TORCH_DIR = BASE_DIR / "models" / "torch_hub"
+LOCAL_DEEPFACE_DIR = BASE_DIR / "models" / "deepface"
+LOCAL_TORCH_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_DEEPFACE_DIR.mkdir(parents=True, exist_ok=True)
+
+os.environ["TORCH_HOME"] = str(LOCAL_TORCH_DIR)
+os.environ["DEEPFACE_HOME"] = str(LOCAL_DEEPFACE_DIR)
 
 import numpy as np
 import torch
@@ -28,13 +33,22 @@ from torchvision.models.detection import (
     ssdlite320_mobilenet_v3_large,
 )
 
+# ঐচ্ছিক DeepFace মডিউল (Human Gender & Age অনুমানের জন্য)
+try:
+    from deepface import DeepFace  # type: ignore
+
+    DEEPFACE_AVAILABLE = True
+except Exception:
+    DeepFace = None  # type: ignore
+    DEEPFACE_AVAILABLE = False
+
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-app = FastAPI(title="GTX 1650 CUDA Object Detection, Color & Classification App")
+app = FastAPI(title="GTX 1650 CUDA Object, Color, Classification & Human Age/Gender App")
 
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA ডিভাইস পাওয়া যায়নি! GTX 1650 ও PyTorch CUDA সেটআপ যাচাই করুন।")
@@ -45,7 +59,6 @@ TOTAL_VRAM_GB = torch.cuda.get_device_properties(DEVICE).total_memory / (1024 **
 
 MODEL_CACHE: Dict[str, Any] = {}
 
-# COCO ক্লাসগুলোর সহজ Classification ম্যাপিং
 CLASSIFICATION_MAP: Dict[str, str] = {
     "person": "Person / Human",
     "bicycle": "Vehicle",
@@ -179,10 +192,7 @@ def _rgb_to_color_name(rgb: Tuple[int, int, int]) -> str:
     return "Pink / Magenta"
 
 
-def detect_dominant_color(image: Image.Image, box: Tuple[float, float, float, float]) -> Dict[str, Any]:
-    """
-    বাউন্ডিং বক্সের ভেতরের অংশ থেকে (প্রান্তের নয়েজ কমিয়ে) প্রধান রঙ শনাক্ত করে।
-    """
+def _crop_box_safe(image: Image.Image, box: Tuple[float, float, float, float], pad_ratio: float = 0.0) -> Image.Image:
     x1, y1, x2, y2 = [int(round(v)) for v in box]
     w, h = image.size
     x1 = max(0, min(x1, w - 1))
@@ -190,22 +200,25 @@ def detect_dominant_color(image: Image.Image, box: Tuple[float, float, float, fl
     x2 = max(x1 + 1, min(x2, w))
     y2 = max(y1 + 1, min(y2, h))
 
-    # বক্সের বাইরের বর্ডার এড়াতে ভেতরের ১৫% অংশ ক্রপ করা (যথেষ্ট বড় হলে)
-    bw = x2 - x1
-    bh = y2 - y1
-    if bw > 20 and bh > 20:
-        pad_x = max(2, int(bw * 0.15))
-        pad_y = max(2, int(bh * 0.15))
-        if (x2 - pad_x) > (x1 + pad_x) and (y2 - pad_y) > (y1 + pad_y):
-            x1 += pad_x
-            x2 -= pad_x
-            y1 += pad_y
-            y2 -= pad_y
+    if pad_ratio > 0:
+        bw = x2 - x1
+        bh = y2 - y1
+        if bw > 20 and bh > 20:
+            px = max(2, int(bw * pad_ratio))
+            py = max(2, int(bh * pad_ratio))
+            if (x2 - px) > (x1 + px) and (y2 - py) > (y1 + py):
+                x1 += px
+                x2 -= px
+                y1 += py
+                y2 -= py
 
-    crop = image.crop((x1, y1, x2, y2)).resize((32, 32), Image.Resampling.BILINEAR)
+    return image.crop((x1, y1, x2, y2))
+
+
+def detect_dominant_color(image: Image.Image, box: Tuple[float, float, float, float]) -> Dict[str, Any]:
+    crop = _crop_box_safe(image, box, pad_ratio=0.15).resize((32, 32), Image.Resampling.BILINEAR)
     arr = np.asarray(crop, dtype=np.uint8).reshape(-1, 3)
 
-    # Quantize to 16-step buckets for clean dominant color grouping
     quant = (arr // 16) * 16 + 8
     unique_colors, counts = np.unique(quant, axis=0, return_counts=True)
     best_idx = int(np.argmax(counts))
@@ -218,6 +231,64 @@ def detect_dominant_color(image: Image.Image, box: Tuple[float, float, float, fl
         "hex": hex_color,
         "rgb": list(dom_rgb),
     }
+
+
+def analyze_human_attributes(image: Image.Image, box: Tuple[float, float, float, float]) -> Dict[str, Any]:
+    """
+    person ডিটেক্ট হলে ক্রপ করা অংশ থেকে সম্ভাব্য Gender (Male/Female) এবং Age অনুমান করে।
+    """
+    if not DEEPFACE_AVAILABLE or DeepFace is None:
+        return {
+            "gender": "Unknown (Install deepface)",
+            "age": None,
+            "age_label": "N/A",
+            "estimated": False,
+        }
+
+    person_crop = _crop_box_safe(image, box, pad_ratio=0.05)
+    # খুব ছোট ক্রপ হলে রিসাইজ করে বিশ্লেষণে সুবিধা দেওয়া
+    if person_crop.width < 120 or person_crop.height < 120:
+        person_crop = person_crop.resize((160, 160), Image.Resampling.BILINEAR)
+
+    rgb_arr = np.asarray(person_crop, dtype=np.uint8)
+
+    try:
+        result = DeepFace.analyze(
+            img_path=rgb_arr,
+            actions=["age", "gender"],
+            enforce_detection=False,
+            detector_backend="opencv",
+            silent=True,
+        )
+        item = result[0] if isinstance(result, list) and result else result
+        if not isinstance(item, dict):
+            return {"gender": "Unknown", "age": None, "age_label": "N/A", "estimated": False}
+
+        raw_gender = str(item.get("dominant_gender", "")).strip()
+        if raw_gender.lower() in ("man", "male"):
+            gender_label = "Male (ছেলে/পুরুষ)"
+        elif raw_gender.lower() in ("woman", "female"):
+            gender_label = "Female (মেয়ে/মহিলা)"
+        else:
+            gender_label = raw_gender or "Unknown"
+
+        age_val = item.get("age")
+        age_int: Optional[int] = int(round(float(age_val))) if age_val is not None else None
+        age_label = f"~{age_int} yrs" if age_int is not None else "N/A"
+
+        return {
+            "gender": gender_label,
+            "age": age_int,
+            "age_label": age_label,
+            "estimated": True,
+        }
+    except Exception:
+        return {
+            "gender": "Unknown",
+            "age": None,
+            "age_label": "N/A",
+            "estimated": False,
+        }
 
 
 def load_detection_model(model_name: str = "fasterrcnn"):
@@ -290,10 +361,19 @@ def draw_detections(image: Image.Image, boxes, labels, scores, categories: List[
         category_group = classify_object(class_name)
         color_info = detect_dominant_color(image, (x1_c, y1_c, x2_c, y2_c))
 
+        human_info: Optional[Dict[str, Any]] = None
+        if class_name.lower() == "person":
+            human_info = analyze_human_attributes(image, (x1_c, y1_c, x2_c, y2_c))
+
         box_color = CATEGORY_BOX_COLORS.get(category_group, "#00E5FF")
         draw.rectangle([x1_c, y1_c, x2_c, y2_c], outline=box_color, width=3)
 
-        text = f"{class_name} | {color_info['color_name']} ({conf * 100:.1f}%)"
+        if human_info and human_info.get("estimated"):
+            short_g = "Male" if "Male" in human_info["gender"] else ("Female" if "Female" in human_info["gender"] else human_info["gender"])
+            text = f"{class_name} | {short_g}, {human_info['age_label']} | {color_info['color_name']} ({conf * 100:.1f}%)"
+        else:
+            text = f"{class_name} | {color_info['color_name']} ({conf * 100:.1f}%)"
+
         bbox = draw.textbbox((x1_c, y1_c), text, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
@@ -310,6 +390,7 @@ def draw_detections(image: Image.Image, boxes, labels, scores, categories: List[
                 "classification": category_group,
                 "color": color_info["color_name"],
                 "color_hex": color_info["hex"],
+                "human_attributes": human_info,
                 "confidence": round(conf * 100, 2),
                 "box": [round(x1_c, 1), round(y1_c, 1), round(x2_c, 1), round(y2_c, 1)],
             }
@@ -328,12 +409,20 @@ def summarize_detections(detections: List[Dict[str, Any]]) -> Dict[str, Any]:
     color_counts = Counter(item["color"] for item in detections)
     sorted_colors = dict(sorted(color_counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
+    gender_counts = Counter()
+    for item in detections:
+        h_attr = item.get("human_attributes")
+        if h_attr and h_attr.get("gender"):
+            gender_counts[h_attr["gender"]] += 1
+    sorted_genders = dict(sorted(gender_counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
     return {
         "unique_count": len(sorted_labels),
         "unique_labels": list(sorted_labels.keys()),
         "counts_by_label": sorted_labels,
         "counts_by_classification": sorted_classes,
         "counts_by_color": sorted_colors,
+        "counts_by_gender": sorted_genders,
     }
 
 
@@ -347,7 +436,9 @@ def health_check():
         "total_vram_gb": round(TOTAL_VRAM_GB, 2),
         "allocated_vram_mb": round(alloc_mb, 2),
         "reserved_vram_mb": round(reserved_mb, 2),
-        "model_dir": str(LOCAL_MODEL_DIR),
+        "torch_model_dir": str(LOCAL_TORCH_DIR),
+        "deepface_model_dir": str(LOCAL_DEEPFACE_DIR),
+        "deepface_available": DEEPFACE_AVAILABLE,
         "loaded_models": list(MODEL_CACHE.keys()),
     }
 
@@ -425,6 +516,7 @@ async def detect_objects(
     return {
         "model": bundle["name"],
         "gpu": GPU_NAME,
+        "deepface_available": DEEPFACE_AVAILABLE,
         "image_size": {"width": pil_img.width, "height": pil_img.height},
         "h2d_time_ms": round(h2d_ms, 2),
         "gpu_inference_ms": round(gpu_ms, 2),
@@ -436,6 +528,7 @@ async def detect_objects(
         "counts_by_label": summary["counts_by_label"],
         "counts_by_classification": summary["counts_by_classification"],
         "counts_by_color": summary["counts_by_color"],
+        "counts_by_gender": summary["counts_by_gender"],
         "detections": detections,
         "annotated_image_base64": f"data:image/jpeg;base64,{b64_img}",
     }
@@ -449,7 +542,7 @@ def index():
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GTX 1650 CUDA Object Detection, Color & Classification</title>
+  <title>GTX 1650 CUDA Object, Color, Classification & Human Age/Gender</title>
   <style>
     :root {
       --bg: #0b1020;
@@ -478,7 +571,7 @@ def index():
       background: rgba(19, 27, 51, 0.85);
       backdrop-filter: blur(8px);
     }
-    .brand { font-size: 1.15rem; font-weight: 700; color: var(--accent); }
+    .brand { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
     .gpu-badge {
       background: rgba(0, 229, 255, 0.12);
       border: 1px solid rgba(0, 229, 255, 0.4);
@@ -487,11 +580,11 @@ def index():
       font-size: 0.85rem;
     }
     .container {
-      max-width: 1240px;
+      max-width: 1260px;
       margin: 24px auto;
       padding: 0 20px;
       display: grid;
-      grid-template-columns: 370px 1fr;
+      grid-template-columns: 380px 1fr;
       gap: 22px;
     }
     @media (max-width: 920px) {
@@ -572,11 +665,14 @@ def index():
     .stat-val { font-size: 1.05rem; font-weight: 700; margin-top: 4px; color: var(--accent); }
     .summary-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 12px;
       margin-top: 14px;
     }
-    @media (max-width: 900px) {
+    @media (max-width: 1050px) {
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 650px) {
       .summary-grid { grid-template-columns: 1fr; }
     }
     .summary-box {
@@ -609,7 +705,7 @@ def index():
     }
     .det-list {
       margin-top: 14px;
-      max-height: 260px;
+      max-height: 270px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -626,13 +722,13 @@ def index():
       align-items: center;
       gap: 8px;
     }
-    .det-sub { font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
+    .det-sub { font-size: 0.76rem; color: var(--muted); margin-top: 3px; line-height: 1.4; }
     .status-msg { font-size: 0.85rem; color: var(--muted); margin-top: 8px; min-height: 20px; }
   </style>
 </head>
 <body>
   <header>
-    <div class="brand">⚡ CUDA Object Detection, Color & Classification</div>
+    <div class="brand">⚡ CUDA Object, Color, Classification & Human Age/Gender</div>
     <div class="gpu-badge" id="gpuInfo">GPU স্ট্যাটাস লোড হচ্ছে...</div>
   </header>
 
@@ -675,7 +771,7 @@ def index():
     </div>
 
     <div class="card">
-      <h3>২. আউটপুট, ক্লাসিফিকেশন, রঙ ও CUDA পারফরম্যান্স</h3>
+      <h3>২. আউটপুট, ক্লাসিফিকেশন, রঙ ও Human বিশ্লেষণ</h3>
       <div class="preview-box" id="previewBox">
         <span style="color: var(--muted);">একটি ছবি আপলোড করুন অথবা Webcam থেকে ক্যাপচার করুন</span>
       </div>
@@ -724,6 +820,13 @@ def index():
             <span style="color: var(--muted); font-size: 0.82rem;">এখনো কোনো ডেটা নেই</span>
           </div>
         </div>
+
+        <div class="summary-box">
+          <div class="summary-title">Human Gender Summary</div>
+          <div class="badge-wrap" id="genderBadges">
+            <span style="color: var(--muted); font-size: 0.82rem;">কোনো Human ডেটা নেই</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -745,6 +848,7 @@ def index():
     const uniqueBadges = document.getElementById("uniqueBadges");
     const classBadges = document.getElementById("classBadges");
     const colorBadges = document.getElementById("colorBadges");
+    const genderBadges = document.getElementById("genderBadges");
 
     let selectedFile = null;
     let videoEl = null;
@@ -757,7 +861,8 @@ def index():
       try {
         const res = await fetch("/health");
         const data = await res.json();
-        gpuInfo.textContent = `${data.gpu} | VRAM: ${data.allocated_vram_mb} / ${(data.total_vram_gb * 1024).toFixed(0)} MB`;
+        const dfStatus = data.deepface_available ? "Age/Gender: ON" : "Age/Gender: Off";
+        gpuInfo.textContent = `${data.gpu} | VRAM: ${data.allocated_vram_mb} / ${(data.total_vram_gb * 1024).toFixed(0)} MB | ${dfStatus}`;
       } catch (e) {
         gpuInfo.textContent = "GPU তথ্য পাওয়া যায়নি";
       }
@@ -817,9 +922,9 @@ def index():
       }, "image/jpeg", 0.9);
     });
 
-    function renderBadges(container, entries, withDot = false, colorLookup = {}) {
+    function renderBadges(container, entries, withDot = false, colorLookup = {}, emptyText = "কোনো ডেটা নেই") {
       if (!entries || entries.length === 0) {
-        container.innerHTML = `<span style="color: var(--muted); font-size: 0.82rem;">কোনো ডেটা নেই</span>`;
+        container.innerHTML = `<span style="color: var(--muted); font-size: 0.82rem;">${emptyText}</span>`;
         return;
       }
       container.innerHTML = entries.map(([key, cnt]) => {
@@ -836,7 +941,7 @@ def index():
         return;
       }
       detectBtn.disabled = true;
-      statusMsg.textContent = "GTX 1650 জিপিইউতে অবজেক্ট ডিটেকশন, রঙ ও ক্লাসিফিকেশন চলছে...";
+      statusMsg.textContent = "GTX 1650 জিপিইউতে অবজেক্ট, রঙ, ক্লাসিফিকেশন ও Human বিশ্লেষণ চলছে...";
 
       const formData = new FormData();
       formData.append("file", selectedFile);
@@ -874,18 +979,26 @@ def index():
           }
         });
         renderBadges(colorBadges, Object.entries(data.counts_by_color || {}), true, colorHexMap);
+        renderBadges(genderBadges, Object.entries(data.counts_by_gender || {}), false, {}, "কোনো Human ডেটা নেই");
 
         detList.innerHTML = "";
         if (!data.detections || data.detections.length === 0) {
           detList.innerHTML = `<div class="det-item"><span>কোনো অবজেক্ট পাওয়া যায়নি (Threshold কমাতে পারেন)</span></div>`;
         } else {
           data.detections.forEach((d, idx) => {
+            let humanLine = "";
+            if (d.label.toLowerCase() === "person" && d.human_attributes) {
+              humanLine = `<br/>Human: <strong>${d.human_attributes.gender}</strong> • Est. Age: <strong>${d.human_attributes.age_label}</strong>`;
+            }
             const div = document.createElement("div");
             div.className = "det-item";
             div.innerHTML = `
               <div>
                 <div><strong>#${idx + 1} ${d.label}</strong></div>
-                <div class="det-sub">Class: ${d.classification} • Color: <span class="color-dot" style="background:${d.color_hex}"></span> ${d.color}</div>
+                <div class="det-sub">
+                  Class: ${d.classification} • Color: <span class="color-dot" style="background:${d.color_hex}"></span> ${d.color}
+                  ${humanLine}
+                </div>
               </div>
               <strong>${d.confidence}%</strong>
             `;
