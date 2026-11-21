@@ -26,10 +26,12 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(APP_DIR, "models")
 HF_MODELS_CACHE = os.path.join(MODELS_DIR, "huggingface")
+HF_HUB_CACHE = os.path.join(HF_MODELS_CACHE, "hub")
 TORCH_MODELS_CACHE = os.path.join(MODELS_DIR, "torch")
 
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(HF_MODELS_CACHE, exist_ok=True)
+os.makedirs(HF_HUB_CACHE, exist_ok=True)
 os.makedirs(TORCH_MODELS_CACHE, exist_ok=True)
 
 # Set environment variables before any huggingface or transformers imports
@@ -1746,6 +1748,15 @@ MODEL_CATALOGUE = {
     },
 
     # ⚡ Models < 1GB (Ultra-Lightweight & Fast)
+    "qwen": {
+        "id": "Qwen/Qwen2.5-0.5B-Instruct",
+        "name": "Qwen2.5-0.5B-Instruct",
+        "size_label": "0.9 GB",
+        "params": "490M",
+        "vram_req_gb": 0.9,
+        "group": "sub_1gb",
+        "desc": "Fast Bengali, English & Code Reasoning"
+    },
     "qwen-0.5b": {
         "id": "Qwen/Qwen2.5-0.5B-Instruct",
         "name": "Qwen2.5-0.5B-Instruct",
@@ -1755,9 +1766,18 @@ MODEL_CATALOGUE = {
         "group": "sub_1gb",
         "desc": "Fast Bengali, English & Code Reasoning"
     },
+    "smollm": {
+        "id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "name": "SmolLM2-135M-Instruct",
+        "size_label": "270 MB",
+        "params": "135M",
+        "vram_req_gb": 0.3,
+        "group": "sub_1gb",
+        "desc": "Modern Compact LLaMA Architecture"
+    },
     "smollm-135m": {
-        "id": "HuggingFaceTB/SmolLM-135M",
-        "name": "SmolLM-135M",
+        "id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "name": "SmolLM2-135M-Instruct",
         "size_label": "270 MB",
         "params": "135M",
         "vram_req_gb": 0.3,
@@ -1796,12 +1816,47 @@ MODEL_CATALOGUE = {
 def resolve_hf_model_id(model_key_or_id):
     """Resolve shorthand key or return custom Hugging Face model repository ID"""
     cleaned = str(model_key_or_id).strip()
-    if cleaned.lower() in MODEL_CATALOGUE:
-        return MODEL_CATALOGUE[cleaned.lower()]["id"]
+    k_lower = cleaned.lower()
+
+    # Direct alias map for all common shorthand names
+    ALIASES = {
+        "smollm": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "smollm-135m": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "smollm2-135m": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "smollm2": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        "smollm2-1.7b": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        "qwen": "Qwen/Qwen2.5-0.5B-Instruct",
+        "qwen-0.5b": "Qwen/Qwen2.5-0.5B-Instruct",
+        "qwen-1.5b": "Qwen/Qwen2.5-1.5B-Instruct",
+        "qwen-3b": "Qwen/Qwen2.5-3B-Instruct",
+        "deepseek": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        "deepseek-1.5b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        "tinyllama": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "distilgpt2": "distilgpt2",
+        "gpt2": "gpt2",
+        "gpt2-medium": "gpt2-medium",
+        "gemma-2-2b": "google/gemma-2-2b-it",
+        "gemma": "google/gemma-2-2b-it",
+        "phi-3.5-mini": "microsoft/Phi-3.5-mini-instruct",
+        "phi": "microsoft/Phi-3.5-mini-instruct",
+        "llama-3.2-1b": "meta-llama/Llama-3.2-1B-Instruct",
+        "llama-3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
+        "llama": "meta-llama/Llama-3.2-1B-Instruct"
+    }
+
+    if k_lower in ALIASES:
+        return ALIASES[k_lower]
+
+    if k_lower in MODEL_CATALOGUE:
+        return MODEL_CATALOGUE[k_lower]["id"]
+
     # Check partial matches
     for k, v in MODEL_CATALOGUE.items():
-        if k == cleaned.lower() or v["id"].lower() == cleaned.lower() or v["name"].lower() == cleaned.lower():
+        if k == k_lower or v["id"].lower() == k_lower or v["name"].lower() == k_lower:
             return v["id"]
+        if k in k_lower or k_lower in k:
+            return v["id"]
+
     return cleaned
 
 def get_dynamic_gpu_info():
@@ -1857,7 +1912,12 @@ def load_hf_model_dynamically(hf_model_id, device):
     from transformers import AutoModelForCausalLM, AutoTokenizer
     start_t = time.perf_counter()
 
-    tokenizer = AutoTokenizer.from_pretrained(hf_model_id, cache_dir=HF_MODELS_CACHE)
+    # Load tokenizer: try primary hub cache, fallback to local_files_only if offline
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(hf_model_id, cache_dir=HF_HUB_CACHE)
+    except Exception:
+        tokenizer = AutoTokenizer.from_pretrained(hf_model_id, cache_dir=HF_HUB_CACHE, local_files_only=True)
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -1867,29 +1927,48 @@ def load_hf_model_dynamically(hf_model_id, device):
     gpu_info = get_dynamic_gpu_info()
     can_auto_map = gpu_info["has_cuda"] and gpu_info["free_vram_gb"] >= 0.8
 
+    model = None
     if can_auto_map:
         try:
             model = AutoModelForCausalLM.from_pretrained(
                 hf_model_id,
-                cache_dir=HF_MODELS_CACHE,
+                cache_dir=HF_HUB_CACHE,
                 torch_dtype=dtype,
                 low_cpu_mem_usage=True,
                 device_map="auto"
             )
         except Exception:
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    hf_model_id,
+                    cache_dir=HF_HUB_CACHE,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True
+                ).to(device)
+            except Exception:
+                model = AutoModelForCausalLM.from_pretrained(
+                    hf_model_id,
+                    cache_dir=HF_HUB_CACHE,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                    local_files_only=True
+                ).to(device)
+    else:
+        try:
             model = AutoModelForCausalLM.from_pretrained(
                 hf_model_id,
-                cache_dir=HF_MODELS_CACHE,
+                cache_dir=HF_HUB_CACHE,
                 torch_dtype=dtype,
                 low_cpu_mem_usage=True
             ).to(device)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            hf_model_id,
-            cache_dir=HF_MODELS_CACHE,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True
-        ).to(device)
+        except Exception:
+            model = AutoModelForCausalLM.from_pretrained(
+                hf_model_id,
+                cache_dir=HF_HUB_CACHE,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+                local_files_only=True
+            ).to(device)
 
     model.eval()
     load_time = round(time.perf_counter() - start_t, 2)
